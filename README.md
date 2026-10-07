@@ -73,4 +73,4 @@ _Coming soon._
 
 ## License
 
-TBD
+[MIT](LICENSE)
