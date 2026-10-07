@@ -26,12 +26,16 @@ with someone and things flow straight between you.
   We Hate Mail:   You ◄──────── encrypted, direct ────────► Friend
 ```
 
-## What it does (v0.1 goals)
+## What it does (v1 goals)
 
-- [ ] **Pair with an invite code.** One person creates a space, the other joins with a short code
-- [ ] **1:1 chat.** Real-time text messages, end-to-end encrypted
-- [ ] **Send files.** Any size, streamed directly between devices
+- [ ] **Desktop apps** for macOS (.dmg), Windows (.exe) and Linux (.AppImage / .deb)
+- [ ] **Invite by link or QR code.** Send it any way you like; they install the app if needed and you're connected
+- [ ] **Chat** with end-to-end encryption, directly between devices
+- [ ] **Pictures (albums), videos and files** of any size
+- [ ] **Pause and resume.** If either of you goes offline, transfers pause and continue when you're back
 - [ ] **No accounts.** Your identity is a keypair generated on your device
+
+Full spec: [docs/SPEC.md](docs/SPEC.md)
 
 ## How it works
 
@@ -44,7 +48,7 @@ Built on the [Holepunch](https://holepunch.to) peer-to-peer stack:
 | **Hypercore / Hyperdrive** | Signed logs for chat history and streaming file transfer |
 | **Pear / Bare** | JavaScript runtime for P2P desktop apps |
 
-Inspired by [Keet](https://keet.io), [Holesail](https://holesail.io),
+Lessons taken from [Matrix](https://matrix.org) (see the spec). Inspired by [Keet](https://keet.io), [Holesail](https://holesail.io),
 [OnionShare](https://onionshare.org) and [Wormhole](https://wormhole.app).
 
 ## Privacy: what it protects and what it doesn't
@@ -63,9 +67,12 @@ Inspired by [Keet](https://keet.io), [Holesail](https://holesail.io),
 
 ## Roadmap
 
-- **v0.1:** 1:1 chat and file transfer (CLI)
-- **v0.2:** desktop app (Pear)
-- **Later:** Tor mode for IP anonymity, group spaces, offline delivery, mobile
+- **M1:** core P2P engine (pairing, chat, offline queue), tested headless
+- **M2:** desktop app and chat UI (dark theme)
+- **M3:** pictures, albums, videos, files, with pause/resume
+- **M4:** invite links, QR codes and the wehatemail.com join page
+- **M5:** installers for macOS, Windows and Linux via GitHub Actions
+- **Later:** multiple devices, backup, group spaces, Tor mode, mobile
 
 ## Getting started
 
