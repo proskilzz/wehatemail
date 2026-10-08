@@ -76,8 +76,8 @@ Lessons taken from [Matrix](https://matrix.org) (see the spec). Inspired by [Kee
 
 ## Getting started
 
-So far there's the P2P engine and a small command-line app to try it (the
-desktop app comes in M2).
+There's the P2P engine, a small command-line app and (new in M2) the desktop
+app with the chat screen.
 
 You need [Node.js](https://nodejs.org) **22 or newer** (check with `node --version`)
 and [git](https://git-scm.com).
@@ -88,6 +88,19 @@ cd wehatemail
 npm install
 npm test
 ```
+
+### Run the desktop app
+
+```sh
+npm run dev
+```
+
+On first launch it asks for your name and shows what the app does and doesn't
+protect. Click **+ invite** to get a link and QR code, or **paste** to join
+someone else's invite.
+
+On Linux the app needs a keychain (GNOME Keyring or KWallet) to store your
+secrets. It refuses to start rather than store them unprotected.
 
 ### Try it on two computers
 
