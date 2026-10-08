@@ -19,6 +19,8 @@ export interface Settings {
 }
 
 export interface InitState {
+  /** My public key (hex), used for my identicon. */
+  id: string
   name: string | null
   settings: Settings
   contacts: Contact[]
@@ -35,6 +37,8 @@ export type EngineEvent =
   | { type: 'typing', id: string, typing: boolean }
   | { type: 'invites' }
   | { type: 'warning', id: string, text: string }
+  /** An invite link opened from outside the app (wehatemail://join/…). */
+  | { type: 'link', input: string }
 
 /** What the renderer can ask the main process to do. */
 export interface WhmApi {
@@ -59,6 +63,8 @@ export interface WhmApi {
   listInvites (): Promise<Invite[]>
   acceptInvite (input: string): Promise<Contact>
   copy (text: string): Promise<void>
+  /** An invite link the OS opened the app with, if one is waiting. */
+  takeLink (): Promise<string | null>
   onEvent (fn: (e: EngineEvent) => void): () => void
 }
 

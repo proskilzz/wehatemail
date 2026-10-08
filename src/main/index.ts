@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, protocol, safeStorage, shell } from 'electron'
-import { Engine, SafeStorageSecretStore } from '../core/index.ts'
+import { Engine, SafeStorageSecretStore, findInviteLink } from '../core/index.ts'
 import { SettingsFile } from './settings.ts'
 import type { InitState, SendFile, Settings } from '../shared/api.ts'
 
@@ -9,6 +9,21 @@ import type { InitState, SendFile, Settings } from '../shared/api.ts'
 protocol.registerSchemesAsPrivileged([
   { scheme: 'whm-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
 ])
+
+// wehatemail://join/<code> links: the OS starts (or tells) the app, we hand the link to the
+// window, which shows it in the connect box for the person to confirm.
+let pendingLink: string | null = null
+let rendererReady = false
+
+function deliverLink (link: string | null) {
+  if (!link) return
+  pendingLink = link
+  if (rendererReady) send('whm:event', { type: 'link', input: link })
+  if (win) {
+    if (win.isMinimized()) win.restore()
+    win.focus()
+  }
+}
 
 let win: BrowserWindow | null = null
 let engine: Engine | null = null
@@ -45,6 +60,7 @@ async function start () {
   serveMedia(eng)
 
   const snapshot = (): InitState => ({
+    id: eng.id,
     name: eng.name,
     settings: settings.get(),
     contacts: eng.contacts(),
@@ -85,6 +101,12 @@ async function start () {
   handle('listInvites', () => eng.listInvites())
   handle('acceptInvite', (input: unknown) => eng.acceptInvite(str(input), { timeout: 60000 }))
   handle('copy', (text: unknown) => clipboard.writeText(str(text)))
+  handle('takeLink', () => {
+    rendererReady = true
+    const link = pendingLink
+    pendingLink = null
+    return link
+  })
 }
 
 /** Validate what the renderer sends before it reaches the file system. */
@@ -103,7 +125,16 @@ function serveMedia (eng: Engine) {
       const [messageId, index] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
       const contactId = url.hostname
       const att = eng.attachmentInfo(contactId, messageId, Number(index))
-      const headers: Record<string, string> = { 'Content-Type': att.mime || 'application/octet-stream', 'Accept-Ranges': 'bytes' }
+      // Only allowlisted image/video types whose bytes match are shown inline. Anything
+      // else is a generic, download-only file that the browser must not sniff or render.
+      const serving = await eng.attachmentServing(contactId, messageId, Number(index))
+      const headers: Record<string, string> = {
+        'Content-Type': serving.mime,
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+        'Accept-Ranges': 'bytes'
+      }
+      if (!serving.inline) headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(att.name)}`
       // Video needs byte ranges to seek.
       const m = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range') ?? '')
       let start: number | undefined
@@ -153,12 +184,23 @@ function createWindow () {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  // Windows and Linux start a second copy with the link in its arguments; macOS uses open-url.
+  app.on('second-instance', (_e, argv) => {
     if (win) {
       if (win.isMinimized()) win.restore()
       win.focus()
     }
+    deliverLink(findInviteLink(argv))
   })
+  app.on('open-url', (e, url) => {
+    e.preventDefault()
+    deliverLink(findInviteLink([url]))
+  })
+
+  // In dev (`npm run dev`) Electron is the default app, so the OS needs the script path too.
+  if (process.defaultApp && process.argv[1]) app.setAsDefaultProtocolClient('wehatemail', process.execPath, [path.resolve(process.argv[1])])
+  else app.setAsDefaultProtocolClient('wehatemail')
+  pendingLink = findInviteLink(process.argv)
 
   app.whenReady().then(async () => {
     try {

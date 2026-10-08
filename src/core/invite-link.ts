@@ -11,6 +11,11 @@ export function inviteLinks (code: string) {
   return { link: JOIN_URL + code, appLink: APP_URL + code }
 }
 
+/** The wehatemail://join/<code> link in a command line or OS "open URL" call, if there is one. */
+export function findInviteLink (args: string[]): string | null {
+  return args.find(a => /^wehatemail:\/\/join\/[a-z0-9]+\/?$/i.test(a)) ?? null
+}
+
 /** Accepts the web link, the wehatemail:// link or the bare code. */
 export function parseInvite (input: string): Buffer {
   let s = input.trim()

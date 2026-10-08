@@ -4,13 +4,14 @@ import { Chat } from './Chat.tsx'
 import { FirstRun } from './FirstRun.tsx'
 import { Info } from './Info.tsx'
 import { HowModal, InviteModal, PasteModal } from './Modals.tsx'
-import { Sidebar } from './Sidebar.tsx'
+import { Avatar, BuddiesButton, Drawer } from './Buddies.tsx'
 import { door } from './sound.ts'
 
 type Dialog = 'invite' | 'paste' | 'how' | null
 
 export function App () {
   const [ready, setReady] = useState(false)
+  const [myId, setMyId] = useState('')
   const [name, setName] = useState<string | null>(null)
   const [settings, setSettings] = useState<Settings>({ acknowledged: false, status: '', sounds: false })
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -20,9 +21,12 @@ export function App () {
   const [transfers, setTransfers] = useState<Transfer[]>([])
   const [typing, setTyping] = useState<Record<string, boolean>>({})
   const [info, setInfo] = useState(false)
+  const [drawer, setDrawer] = useState(false)
   const [safetyFocus, setSafetyFocus] = useState(0)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [warning, setWarning] = useState('')
+  // An invite link the OS opened us with; shown in the connect box once setup is done.
+  const [link, setLink] = useState<string | null>(null)
 
   // The event handler lives for the whole session, so it reads current values from here.
   const live = useRef({ selected, settings, contacts })
@@ -36,7 +40,8 @@ export function App () {
     setContacts(await window.whm.contacts())
   }, [])
 
-  const apply = useCallback((s: { name: string | null, settings: Settings, contacts: Contact[], invites: Invite[] }) => {
+  const apply = useCallback((s: { id: string, name: string | null, settings: Settings, contacts: Contact[], invites: Invite[] }) => {
+    setMyId(s.id)
     setName(s.name)
     setSettings(s.settings)
     setContacts(s.contacts)
@@ -48,6 +53,7 @@ export function App () {
       apply(s)
       setSelected(s.contacts[0]?.id ?? null)
       setReady(true)
+      window.whm.takeLink().then(l => { if (l) { setLink(l); setDialog('paste') } })
     })
     return window.whm.onEvent(async (e: EngineEvent) => {
       if (e.type === 'invites') {
@@ -60,6 +66,11 @@ export function App () {
       }
       if (e.type === 'typing') {
         setTyping(t => ({ ...t, [e.id]: e.typing }))
+        return
+      }
+      if (e.type === 'link') {
+        setLink(e.input)
+        setDialog('paste')
         return
       }
       if (e.type === 'warning') {
@@ -89,6 +100,15 @@ export function App () {
     return () => window.removeEventListener('focus', onFocus)
   }, [loadMessages])
 
+  // Esc closes the Buddies drawer and the Info pane (clicking outside does too, via the scrim).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) { setDrawer(false); setInfo(false) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   if (!ready) return null
 
   if (!settings.acknowledged || !name) {
@@ -100,18 +120,17 @@ export function App () {
 
   return (
     <>
-      <div className={'app' + (info ? ' info' : '')}>
-        <Sidebar
-          name={name}
-          settings={settings}
-          contacts={contacts}
-          selected={selected}
-          onSelect={setSelected}
-          onInvite={() => setDialog('invite')}
-          onPaste={() => setDialog('paste')}
-          onHow={() => setDialog('how')}
-          onStatus={status => updateSettings({ status })}
-        />
+      <div className='app'>
+        <BuddiesButton unread={contacts.reduce((n, c) => c.id === selected ? n : n + c.unread, 0)} onClick={() => setDrawer(true)} />
+        {contact && (
+          <Avatar
+            side='them'
+            id={contact.id}
+            name={contact.name}
+            status={contact.presence.status === 'online' ? 'online' : 'offline'}
+          />
+        )}
+        <Avatar side='me' id={myId} name='you' status={settings.status} onStatus={status => updateSettings({ status })} />
         <Chat
           contact={contact}
           messages={messages}
@@ -124,7 +143,19 @@ export function App () {
           onInvite={() => setDialog('invite')}
           onPaste={() => setDialog('paste')}
         />
-        {info && <Info contact={contact} focusSafety={safetyFocus} />}
+        {(drawer || info) && <div className='scrim' onClick={() => { setDrawer(false); setInfo(false) }} />}
+        <Drawer
+          open={drawer}
+          settings={settings}
+          contacts={contacts}
+          selected={selected}
+          onSelect={setSelected}
+          onClose={() => setDrawer(false)}
+          onInvite={() => setDialog('invite')}
+          onPaste={() => setDialog('paste')}
+          onHow={() => setDialog('how')}
+        />
+        {info && <Info contact={contact} focusSafety={safetyFocus} onClose={() => setInfo(false)} />}
       </div>
       {warning && (
         <div className='overlay' onClick={() => setWarning('')}>
@@ -132,7 +163,7 @@ export function App () {
         </div>
       )}
       {dialog === 'invite' && <InviteModal invites={invites} onClose={() => setDialog(null)} />}
-      {dialog === 'paste' && <PasteModal onClose={() => setDialog(null)} onJoined={id => { setDialog(null); setSelected(id) }} />}
+      {dialog === 'paste' && <PasteModal initial={link ?? ''} onClose={() => { setDialog(null); setLink(null) }} onJoined={id => { setDialog(null); setLink(null); setSelected(id) }} />}
       {dialog === 'how' && <HowModal settings={settings} onSettings={updateSettings} onClose={() => setDialog(null)} />}
     </>
   )

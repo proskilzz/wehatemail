@@ -74,8 +74,8 @@ export function InviteModal ({ invites, onClose }: { invites: Invite[], onClose:
   )
 }
 
-export function PasteModal ({ onClose, onJoined }: { onClose: () => void, onJoined: (id: string) => void }) {
-  const [text, setText] = useState('')
+export function PasteModal ({ initial = '', onClose, onJoined }: { initial?: string, onClose: () => void, onJoined: (id: string) => void }) {
+  const [text, setText] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 

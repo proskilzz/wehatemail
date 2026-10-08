@@ -14,6 +14,7 @@
     "start": "electron-vite preview",
     "cli": "tsx src/cli/index.ts",
     "test": "tsc --noEmit && node --import tsx test/all.ts",
+    "bench": "tsx scripts/bench-transfer.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
