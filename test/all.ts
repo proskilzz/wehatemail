@@ -2,3 +2,4 @@
 import './units.test.ts'
 import './pair.test.ts'
 import './reconnect.test.ts'
+import './app.test.ts'

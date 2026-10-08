@@ -179,7 +179,7 @@ export class Engine extends EventEmitter {
 
   private async open () {
     const { storage, secrets } = this.opts
-    await fs.mkdir(storage, { recursive: true })
+    await fs.mkdir(storage, { recursive: true, mode: 0o700 })
     await this.loadState()
 
     let seed = await secrets.get('identity.seed')
@@ -776,7 +776,8 @@ export class Engine extends EventEmitter {
   private save (): Promise<void> {
     const write = async () => {
       const file = this.stateFile()
-      await fs.writeFile(file + '.tmp', JSON.stringify(this.state, null, 2))
+      // Private to this user: it holds contact names and keys' public halves.
+      await fs.writeFile(file + '.tmp', JSON.stringify(this.state, null, 2), { mode: 0o600 })
       await fs.rename(file + '.tmp', file)
     }
     this.saving = this.saving.then(write, write)

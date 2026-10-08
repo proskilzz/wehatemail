@@ -9,11 +9,16 @@
     "node": ">=22"
   },
   "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
     "cli": "tsx src/cli/index.ts",
     "test": "tsc --noEmit && node --import tsx test/all.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "b4a": "^1.9.0",
     "blind-pairing": "^2.3.1",
     "blind-pairing-core": "^2.10.1",
@@ -24,12 +29,23 @@
     "hyperdht": "^6.34.1",
     "hyperswarm": "^4.17.2",
     "protomux": "^3.12.1",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "z32": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "brittle": "^4.4.0",
+    "electron": "^44.7.0",
+    "electron-vite": "^5.0.0",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
-  }
+    "typescript": "^7.0.2",
+    "vite": "^7.3.7"
+  },
+  "main": "out/main/index.js"
 }
