@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Contact, EngineEvent, Invite, Message, Settings } from '../shared/api.ts'
+import type { Contact, EngineEvent, Invite, Message, Settings, Transfer } from '../shared/api.ts'
 import { Chat } from './Chat.tsx'
 import { FirstRun } from './FirstRun.tsx'
 import { Info } from './Info.tsx'
@@ -17,8 +17,10 @@ export function App () {
   const [invites, setInvites] = useState<Invite[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [transfers, setTransfers] = useState<Transfer[]>([])
   const [typing, setTyping] = useState<Record<string, boolean>>({})
   const [info, setInfo] = useState(false)
+  const [safetyFocus, setSafetyFocus] = useState(0)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [warning, setWarning] = useState('')
 
@@ -28,7 +30,8 @@ export function App () {
 
   const loadMessages = useCallback(async (id: string) => {
     const list = await window.whm.messages(id)
-    if (live.current.selected === id) setMessages(list)
+    const progress = await window.whm.transfers(id)
+    if (live.current.selected === id) { setMessages(list); setTransfers(progress) }
     if (document.hasFocus()) await window.whm.markRead(id)
     setContacts(await window.whm.contacts())
   }, [])
@@ -49,6 +52,10 @@ export function App () {
     return window.whm.onEvent(async (e: EngineEvent) => {
       if (e.type === 'invites') {
         setInvites(await window.whm.listInvites())
+        return
+      }
+      if (e.type === 'transfer') {
+        if (e.id === live.current.selected) setTransfers(await window.whm.transfers(e.id))
         return
       }
       if (e.type === 'typing') {
@@ -72,6 +79,7 @@ export function App () {
 
   useEffect(() => {
     setMessages([])
+    setTransfers([])
     if (selected) loadMessages(selected)
   }, [selected, loadMessages])
 
@@ -107,14 +115,16 @@ export function App () {
         <Chat
           contact={contact}
           messages={messages}
+          transfers={transfers}
           typing={!!(contact && typing[contact.id] && contact.presence.status === 'online')}
           myName={name}
           info={info}
           onInfo={() => setInfo(v => !v)}
+          onSafety={() => { setInfo(true); setSafetyFocus(n => n + 1) }}
           onInvite={() => setDialog('invite')}
           onPaste={() => setDialog('paste')}
         />
-        {info && <Info contact={contact} />}
+        {info && <Info contact={contact} focusSafety={safetyFocus} />}
       </div>
       {warning && (
         <div className='overlay' onClick={() => setWarning('')}>

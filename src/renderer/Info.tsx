@@ -1,13 +1,18 @@
+import { useEffect, useRef } from 'react'
 import type { Contact } from '../shared/api.ts'
 import { LOGO, Limits } from './content.tsx'
 import { connection } from './format.ts'
 
-export function Info ({ contact }: { contact: Contact | null }) {
+export function Info ({ contact, focusSafety }: { contact: Contact | null, focusSafety: number }) {
+  const safety = useRef<HTMLDivElement>(null)
+  // The "Info" link in the chat header lands here.
+  useEffect(() => { if (focusSafety) safety.current?.scrollIntoView({ block: 'start' }) }, [focusSafety])
   return (
     <aside className='pane infop'>
       <pre className='ascii'>{LOGO}</pre>
       {contact && (
         <>
+          <div ref={safety} />
           <h3>Safety code</h3>
           <div className='code'>{contact.safetyCode}</div>
           <div className='small'>Compare this with {contact.name} by voice or in person. If it matches, tap verify.</div>

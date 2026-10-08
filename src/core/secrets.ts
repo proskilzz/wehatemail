@@ -62,6 +62,18 @@ export class FileSecretStore implements SecretStore {
   }
 }
 
+/** What to tell someone when the OS keychain can't be used. The fix differs per OS. */
+export function keychainMessage (platform: string): string {
+  const base = 'Your system keychain is not available, so secrets cannot be stored safely. '
+  if (platform === 'darwin') {
+    return base + 'When macOS asks for permission to use the keychain, click Allow (or Always Allow), then start the app again.'
+  }
+  if (platform === 'linux') {
+    return base + 'On Linux, install and unlock GNOME Keyring or KWallet, then start the app again.'
+  }
+  return base + 'Make sure you are signed in to Windows normally (not a temporary profile), then start the app again.'
+}
+
 /** The slice of Electron's `safeStorage` we use. Lets this stay Electron-free and testable. */
 export interface SafeStorageLike {
   isEncryptionAvailable (): boolean
@@ -80,7 +92,7 @@ export class SafeStorageSecretStore implements SecretStore {
 
   private async load () {
     if (!this.safe.isEncryptionAvailable()) {
-      throw new Error('Your system keychain is not available, so secrets cannot be stored safely. On Linux, install and unlock GNOME Keyring or KWallet, then start the app again.')
+      throw new Error(keychainMessage(process.platform))
     }
     if (this.cache) return this.cache
     try {
