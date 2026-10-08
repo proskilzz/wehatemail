@@ -18,15 +18,17 @@ export function Avatar ({ side, id, name, status, onStatus }: {
       <div className='nm'>{name}</div>
       {onStatus
         ? (
-          <input
+          // A textarea so long status lines wrap instead of being cut off. Enter saves; no newlines.
+          <textarea
             className='st'
             value={text}
+            rows={3}
             maxLength={80}
             placeholder='set a status'
             title='Your status line (stays on this device for now)'
-            onChange={e => setText(e.target.value)}
+            onChange={e => setText(e.target.value.replace(/\n/g, ' '))}
             onBlur={() => onStatus(text)}
-            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLTextAreaElement).blur() } }}
           />
           )
         : <div className='st'>{status}</div>}
