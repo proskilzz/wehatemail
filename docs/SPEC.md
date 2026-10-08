@@ -181,6 +181,15 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
 5. **M5: Packaging & release.** electron-builder config, GitHub Actions matrix
    (macos, windows, ubuntu) building dmg/exe/AppImage/deb on `v*` tags, and a
    release checklist.
+   Also: (a) a **manual "Build installers" run** (`workflow_dispatch`) besides
+   `v*` tags, uploading the dmg/exe/AppImage/deb as workflow artifacts, so test
+   builds don't need a release; (b) register `wehatemail://` in the installers
+   (Info.plist CFBundleURLTypes, NSIS, `.desktop` MimeType); (c) a `docs/TESTING.md`
+   two-machine checklist (same Wi-Fi, then one side on phone hotspot) recording
+   connection type and MB/s; (d) open issue to keep in mind, not fix in M5:
+   `npm run bench` gives ~53 MB/s on an M1 Max but two real apps on the same Mac
+   got ~13 MB/s, so the gap is the network path (UDX/hole-punched path), to be
+   measured on real machines first.
 
 ## 9. Out of scope for v1
 
