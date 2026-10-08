@@ -76,7 +76,44 @@ Lessons taken from [Matrix](https://matrix.org) (see the spec). Inspired by [Kee
 
 ## Getting started
 
-_Coming soon._
+So far there's the P2P engine and a small command-line app to try it (the
+desktop app comes in M2).
+
+You need [Node.js](https://nodejs.org) **22 or newer** (check with `node --version`)
+and [git](https://git-scm.com).
+
+```sh
+git clone https://github.com/proskilzz/wehatemail.git
+cd wehatemail
+npm install
+npm test
+```
+
+### Try it on two computers
+
+On each computer, run:
+
+```sh
+npm run cli
+```
+
+It asks for your name the first time. Then:
+
+1. On computer A, type `/invite`. It prints a link.
+2. Send that link to computer B any way you like.
+3. On computer B, type `/join ` followed by the link, then press Enter.
+4. Both sides print `Connected`. Type a message and press Enter to send it.
+
+Type `/help` for all commands. To try it twice on one computer, give each copy
+its own folder, in two terminals:
+
+```sh
+npm run cli -- --data ./alice
+npm run cli -- --data ./bob
+```
+
+Note: the CLI is for testing. It keeps your keys in a plain file in the data
+folder (`~/.wehatemail-cli` by default). The desktop app will use your OS keychain.
 
 ## License
 
