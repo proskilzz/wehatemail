@@ -8,9 +8,10 @@ directories:
 files:
   - out/**
   - package.json
-# Native addons (sodium, udx, ...) cannot be loaded from inside the asar archive.
+# Native addons (.node, and Holepunch's .bare prebuilds) cannot be loaded from inside the asar archive.
 asarUnpack:
   - "**/*.node"
+  - "**/*.bare"
 # wehatemail:// links, registered by each installer (SPEC §4.2).
 protocols:
   - name: We Hate Mail invite
@@ -22,9 +23,10 @@ mac:
       arch: universal
   category: public.app-category.social-networking
   # Prebuilt native files for both CPUs live side by side, so they are identical in both halves.
-  x64ArchFiles: "**/*.node"
-  # v1 ships unsigned (SPEC §2).
-  identity: null
+  x64ArchFiles: "**/*.{node,bare}"
+  # v1 has no Apple Developer ID (SPEC §2). "-" = ad-hoc signature: free, and lets
+  # macOS show "Open Anyway" instead of calling the downloaded app "damaged".
+  identity: "-"
 dmg:
   artifactName: WeHateMail-${version}-mac-universal.${ext}
 win:
