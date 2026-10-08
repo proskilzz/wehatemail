@@ -15,7 +15,8 @@
     "cli": "tsx src/cli/index.ts",
     "test": "tsc --noEmit && node --import tsx test/all.ts",
     "bench": "tsx scripts/bench-transfer.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dist": "electron-vite build && electron-builder"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
@@ -45,10 +46,16 @@
     "@vitejs/plugin-react": "^5.2.0",
     "brittle": "^4.4.0",
     "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^7.3.7"
   },
-  "main": "out/main/index.js"
+  "main": "out/main/index.js",
+  "homepage": "https://wehatemail.com",
+  "author": {
+    "name": "proskilzz",
+    "email": "proskilzz@gmail.com"
+  }
 }
