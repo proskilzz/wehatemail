@@ -103,16 +103,12 @@ so it can be tested headless and reused later (CLI, mobile).
 
 ## 5. Look & feel
 
-- **Dark theme only**, modern, minimal. Design reference:
-  `docs/design/reference.png`. Match its overall feel. If the file isn't in the
-  repo yet, use the defaults below and mention it in the PR.
-- Default layout: left sidebar (contacts, presence dots, Invite button), main
-  chat pane, header with connection status, composer at the bottom with an
-  attach button and drag-and-drop.
-- Default tokens: background `#0f1115`, surface `#171a21`, raised `#1f232c`,
-  text `#e6e8ee`, muted `#8b92a3`, accent `#7c9cff`, success `#3ecf8e`,
-  warning `#f5a524`, danger `#f05252`. Rounded corners 10–14 px, system font
-  stack, monospace for codes/keys.
+- Theme **"Night Shift"**: dark, crisp, a little nostalgic (terminal chat + BBM + AIM).
+  Read `docs/design/THEME.md` and match `docs/design/mockup.html`. The mockup is
+  the visual source of truth; its CSS tokens are the ones to use.
+- Clean and simple: two panes (Buddies + chat), with an optional Info pane.
+  A **large compose box** with a bottom bar of labelled attachment buttons
+  (Photos, Video, File, Album) and Send set apart on the right.
 
 ## 6. Limitations people must see
 
@@ -155,7 +151,8 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
    `hyperdht/testnet` pair, chat, disconnect, reconnect, and get queued messages.
    Plus a small CLI (`npm run cli`) for manual two-machine testing.
 2. **M2: Electron app + chat UI.** First-run (name and limitations screen),
-   sidebar, chat, Invite with link and QR, Paste invite, presence, safety code.
+   sidebar, chat, Invite with link and QR, Paste invite, presence, safety code. Also: a
+   `safeStorage` SecretStore, and engine state files written with mode 0600 (M1 review).
 3. **M3: Media & files.** Hyperblobs, albums, lightbox, video, file cards,
    progress, pause/resume states.
 4. **M4: Links & install flow.** `wehatemail://` protocol on all 3 OSes, static
