@@ -165,6 +165,19 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
    Keep it simple (KISS): one short line, one link, no icons or extra buttons.
 4. **M4: Links & install flow.** `wehatemail://` protocol on all 3 OSes, static
    join page in `site/` (for wehatemail.com) with OS detection and download buttons.
+   Also from M3 testing and review: (a) new **one-on-one layout** (THEME.md
+   "Layout", mockup.html): AIM-style avatar column with their identicon on top
+   and yours at the bottom, the always-on sidebar replaced by a `≡ buddies` button
+   and a drawer with an ×; (b) the Info pane gets an **×** and closes on Esc /
+   click outside; (c) **transfer speed**: two apps on one Mac got about 10 MB/s.
+   Measure where the time goes first (sender copy into the blob log, block
+   size, requests in flight, encryption), report numbers in the PR, then fix.
+   Aim for 50+ MB/s on the same network; (d) **media type hardening**: only show
+   inline when the sender-declared mime is an allowlisted image/video type and
+   the sniffed bytes agree. Everything else is served as
+   `application/octet-stream` with `X-Content-Type-Options: nosniff` and
+   download-only.
+
 5. **M5: Packaging & release.** electron-builder config, GitHub Actions matrix
    (macos, windows, ubuntu) building dmg/exe/AppImage/deb on `v*` tags, and a
    release checklist.

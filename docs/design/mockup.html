@@ -16,60 +16,88 @@
   }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font:14px/1.5 var(--sans); }
-  .app { display:grid; grid-template-columns:240px 1fr; gap:8px; height:100vh; padding:8px; }
   .pane { background:var(--pane); border:1px solid var(--line); border-radius:6px; min-height:0; }
-  .mono { font-family:var(--mono); }
 
-  /* sidebar */
-  .side { display:flex; flex-direction:column; }
-  .title { font:600 12px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:12px 14px 8px; }
+  /* 1:1 first: avatar column (AIM style) + chat. Buddies drawer is hidden until asked for. */
+  .app { position:relative; display:grid; grid-template-columns:112px 1fr; grid-template-rows:auto 1fr auto auto; gap:8px; height:100vh; padding:8px; }
+
+  /* left column */
+  .buddiesbtn { grid-column:1; grid-row:1; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--pane); border:1px solid var(--line);
+    color:var(--text); font:500 12px var(--mono); border-radius:6px; cursor:pointer; position:relative; }
+  .buddiesbtn:hover { border-color:var(--select); }
+  .buddiesbtn svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.5; }
+  .newdot { position:absolute; top:6px; right:8px; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--select); color:#0b0d10; font:600 10px/16px var(--mono); text-align:center; }
+  .avatar { display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 8px; }
+  .avatar canvas { width:88px; height:88px; image-rendering:pixelated; border-radius:4px; display:block; }
+  .avatar .frame { padding:3px; border:1px solid var(--line); border-radius:6px; background:var(--bg); }
+  .avatar.them .frame { border-color:color-mix(in srgb, var(--them) 55%, var(--line)); }
+  .avatar.me .frame { border-color:color-mix(in srgb, var(--me) 55%, var(--line)); }
+  .avatar .nm { font:600 12px var(--mono); }
+  .avatar.them .nm { color:var(--them); } .avatar.me .nm { color:var(--me); }
+  .avatar .st { font:11px var(--mono); color:var(--muted); text-align:center; line-height:1.3; }
+  .themcol { grid-column:1; grid-row:2; }
+  .mecol { grid-column:1; grid-row:3 / span 2; justify-content:flex-start; }
+
+  /* drawer */
+  .drawer { position:absolute; top:8px; bottom:8px; left:8px; width:250px; z-index:5; display:flex; flex-direction:column;
+    box-shadow:0 12px 40px rgba(0,0,0,.6); transform:translateX(-110%); transition:transform .18s ease; }
+  .drawer.open { transform:none; }
+  .drawer .top { display:flex; align-items:center; padding:10px 10px 6px 14px; }
+  .title { font:600 12px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); flex:1; }
+  .x { background:none; border:1px solid var(--line); color:var(--muted); width:26px; height:26px; border-radius:4px; cursor:pointer; font:14px var(--mono); }
+  .x:hover { color:var(--text); border-color:var(--muted); }
   .buddies { list-style:none; margin:0; padding:0 6px; flex:1; }
-  .buddy { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:3px; font-family:var(--mono); cursor:default; }
+  .buddy { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:3px; font-family:var(--mono); cursor:pointer; }
   .buddy:hover { background:var(--raised); }
   .buddy.sel { background:var(--select); color:#0b0d10; }
   .buddy .st { color:var(--muted); font-size:12px; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
   .buddy.sel .st { color:#24402a; }
-  .dot { width:7px; height:7px; border-radius:50%; background:var(--select); flex:none; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--select); flex:none; display:inline-block; }
   .dot.off { background:transparent; border:1px solid var(--muted); }
   .buddy.sel .dot { background:#0b0d10; }
   .count { color:#5fd4e6; font-size:12px; }
   .invite { margin:10px; padding:8px; border:1px dashed var(--line); background:none; color:var(--select); font:500 13px var(--mono); border-radius:4px; cursor:pointer; }
   .invite:hover { border-color:var(--select); }
-  .me { border-top:1px solid var(--line); padding:10px 14px; font-family:var(--mono); }
-  .me b { color:var(--me); font-weight:600; }
-  .me .status { color:var(--muted); font-size:12px; }
+  .scrim { position:absolute; inset:0; z-index:4; background:rgba(0,0,0,.35); display:none; }
+  .scrim.open { display:block; }
 
   /* chat */
-  .chat { display:grid; grid-template-rows:auto 1fr auto auto; border:none; background:none; gap:8px; }
-  .head { display:flex; align-items:center; gap:10px; padding:10px 14px; }
+  .head { grid-column:2; grid-row:1; display:flex; align-items:center; gap:10px; padding:10px 14px; }
   .head .name { font:600 15px var(--mono); color:var(--them); }
   .head .sub { font:12px var(--mono); color:var(--muted); }
+  .head .sub a { color:var(--muted); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+  .head .sub a:hover { color:var(--text); }
   .head .conn { margin-left:auto; font:12px var(--mono); color:var(--select); display:flex; align-items:center; gap:6px; }
   .iconbtn { background:none; border:1px solid var(--line); color:var(--muted); border-radius:4px; width:28px; height:28px; cursor:pointer; }
-  .log { overflow:auto; padding:16px 18px; }
+  .log { grid-column:2; grid-row:2; overflow:auto; padding:16px 18px; }
   .msg { margin:0 0 16px; max-width:640px; }
   .meta { font:12px var(--mono); color:var(--muted); display:flex; gap:8px; align-items:baseline; }
   .meta .who { font-weight:600; }
   .who.me { color:var(--me); } .who.them { color:var(--them); }
-  .dr { margin-left:auto; }
-  .dr .r { color:var(--select); }
+  .dr { margin-left:auto; } .dr .r { color:var(--select); }
   .sys { display:flex; gap:8px; align-items:center; font:12px var(--mono); color:var(--muted); margin:0 0 16px; }
   .badge { background:var(--badge); color:#fff; font:600 11px var(--mono); padding:1px 6px; border-radius:2px; }
   .album { display:grid; grid-template-columns:repeat(2,160px); gap:4px; margin-top:6px; }
   .ph { height:110px; border-radius:4px; border:1px solid var(--line); }
-  .ph.more { display:grid; place-items:center; font:600 20px var(--mono); color:var(--text); background:rgba(11,13,16,.55); }
+  .ph.more { display:grid; place-items:center; font:600 20px var(--mono); color:var(--text); }
   .file { margin-top:6px; display:flex; gap:12px; align-items:center; padding:10px 12px; background:var(--raised); border:1px solid var(--line); border-radius:6px; max-width:420px; }
   .file .fn { font-family:var(--mono); font-size:13px; }
   .bar { height:4px; background:var(--line); border-radius:2px; margin:6px 0 4px; overflow:hidden; }
   .bar i { display:block; height:100%; width:62%; background:var(--warn); }
   .paused { font:12px var(--mono); color:var(--warn); }
 
+  /* info pane (opens over the right side, has an × and Esc) */
+  .info { position:absolute; top:8px; right:8px; bottom:8px; width:280px; z-index:5; padding:12px 14px; box-shadow:0 12px 40px rgba(0,0,0,.6); display:none; }
+  .info.open { display:block; }
+  .info h3 { font:600 12px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:18px 0 6px; }
+  .info .code { font:500 16px var(--mono); letter-spacing:.06em; }
+
   /* compose */
-  .compose { padding:0; }
+  .compose { grid-column:2; grid-row:3; padding:0; }
   .compose textarea { display:block; width:100%; min-height:120px; resize:none; border:0; background:var(--raised); color:var(--text);
     font:15px/1.5 var(--sans); padding:14px 16px; border-radius:6px; caret-color:var(--cursor); outline:none; }
   .compose:focus-within { border-color:var(--cursor); }
-  .tools { display:flex; align-items:stretch; gap:4px; padding:6px; }
+  .tools { grid-column:2; grid-row:4; display:flex; align-items:stretch; gap:4px; padding:6px; }
   .tool { display:flex; flex-direction:column; align-items:center; gap:3px; min-width:64px; padding:6px 8px; background:none; border:1px solid transparent;
     color:var(--text); font:12px var(--mono); border-radius:4px; cursor:pointer; }
   .tool:hover { border-color:var(--line); background:var(--raised); }
@@ -83,62 +111,98 @@
 </head>
 <body>
 <div class="app">
-  <aside class="pane side">
-    <div class="title">Buddies</div>
+  <!-- left column: buddies button, THEIR avatar beside the log, YOUR avatar beside the compose box -->
+  <button class="buddiesbtn" id="openBuddies" title="Buddies (other chats)">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>buddies<span class="newdot" title="1 new message in another chat">1</span>
+  </button>
+  <div class="pane avatar them themcol">
+    <div class="frame"><canvas width="10" height="10" data-key="bob-public-key"></canvas></div>
+    <div class="nm">bob</div>
+    <div class="st">on the road 🚐</div>
+  </div>
+  <div class="pane avatar me mecol">
+    <div class="frame"><canvas width="10" height="10" data-key="yuri-public-key"></canvas></div>
+    <div class="nm">you</div>
+    <div class="st">no mail.<br>just us.</div>
+  </div>
+
+  <header class="pane head">
+    <div><div class="name">bob</div><div class="sub">for extra security, compare codes · <a id="openInfo">Info</a></div></div>
+    <div class="conn"><span class="dot"></span>connected · direct</div>
+    <button class="iconbtn" id="openInfo2" title="Info: safety code, connection, limitations">ⓘ</button>
+  </header>
+
+  <section class="pane log">
+    <div class="sys"><span class="badge">SYS</span>you and bob are connected. nothing in between.</div>
+    <div class="msg"><div class="meta"><span class="who them">bob</span>21:04</div>you there? how was the drive</div>
+    <div class="msg"><div class="meta"><span class="who me">you</span>21:05<span class="dr"><span class="r">seen 21:06</span></span></div>
+      long but worth it. sending the pics now
+      <div class="album">
+        <div class="ph" style="background:linear-gradient(135deg,#2b4a6b,#c97b4a)"></div>
+        <div class="ph" style="background:linear-gradient(135deg,#1f3b2d,#7fae6a)"></div>
+        <div class="ph" style="background:linear-gradient(135deg,#3a2b4f,#e0a96d)"></div>
+        <div class="ph more" style="background:linear-gradient(135deg,#22303f,#56708a)">+3</div>
+      </div>
+    </div>
+    <div class="msg"><div class="meta"><span class="who them">bob</span>21:06</div>whoa. send the video too?</div>
+    <div class="msg"><div class="meta"><span class="who me">you</span>21:07<span class="dr">delivered</span></div>
+      <div class="file">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7a828e" stroke-width="1.5"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 10l4-2v8l-4-2"/></svg>
+        <div style="flex:1"><div class="fn">canyon-drive.mp4 · 1.4 GB</div><div class="bar"><i></i></div><div class="paused">⏸ paused: bob went offline · resumes when he's back</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="pane compose">
+    <textarea placeholder="type a message…  (enter to send, shift+enter for a new line)"></textarea>
+  </div>
+  <div class="pane tools">
+    <button class="tool"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 16l-5-5-8 8"/></svg><span><u>P</u>hotos</span></button>
+    <button class="tool"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg><span><u>V</u>ideo</span></button>
+    <button class="tool"><svg viewBox="0 0 24 24"><path d="M21 11.5l-8.5 8.5a5 5 0 01-7-7L14 4.5a3.3 3.3 0 014.7 4.7L10.2 17.7a1.7 1.7 0 01-2.4-2.4L15.5 7.6"/></svg><span><u>F</u>ile</span></button>
+    <button class="tool"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg><span><u>A</u>lbum</span></button>
+    <div class="sp"></div>
+    <span class="hint">or drop files anywhere</span>
+    <button class="tool send">Send <svg viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg></button>
+  </div>
+
+  <!-- buddies drawer: closed by default; opens over the avatar column -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="pane drawer" id="drawer">
+    <div class="top"><div class="title">Buddies</div><button class="x" id="closeBuddies" title="Close (Esc)">×</button></div>
     <ul class="buddies">
       <li class="buddy sel"><span class="dot"></span>bob<span class="st">on the road 🚐</span></li>
-      <li class="buddy"><span class="dot"></span>sam<span class="st">here</span><span class="count">2</span></li>
+      <li class="buddy"><span class="dot"></span>sam<span class="st">here</span><span class="count">1</span></li>
       <li class="buddy"><span class="dot off"></span>mia<span class="st">brb, dial-up</span></li>
     </ul>
     <button class="invite">+ invite someone</button>
-    <div class="me"><b>yuri</b> <span class="dot" style="display:inline-block;margin-left:4px"></span><div class="status">no mail. just us.</div></div>
   </aside>
 
-  <main class="chat pane">
-    <header class="pane head">
-      <div><div class="name">bob</div><div class="sub">on the road 🚐 · verified ✓</div></div>
-      <div class="conn"><span class="dot"></span>connected · direct</div>
-      <button class="iconbtn" title="Info: safety code, connection, limitations">ⓘ</button>
-    </header>
-
-    <section class="pane log">
-      <div class="sys"><span class="badge">SYS</span>you and bob are connected. nothing in between. <span style="color:var(--select)">safety code matched ✓</span></div>
-
-      <div class="msg"><div class="meta"><span class="who them">bob</span>21:04</div>you there? how was the drive</div>
-
-      <div class="msg"><div class="meta"><span class="who me">you</span>21:05<span class="dr"><span class="r">seen 21:06</span></span></div>
-        long but worth it. sending the pics now
-        <div class="album">
-          <div class="ph" style="background:linear-gradient(135deg,#2b4a6b,#c97b4a)"></div>
-          <div class="ph" style="background:linear-gradient(135deg,#1f3b2d,#7fae6a)"></div>
-          <div class="ph" style="background:linear-gradient(135deg,#3a2b4f,#e0a96d)"></div>
-          <div class="ph more" style="background:linear-gradient(135deg,#22303f,#56708a)">+3</div>
-        </div>
-      </div>
-
-      <div class="msg"><div class="meta"><span class="who them">bob</span>21:06</div>whoa. send the video too?</div>
-
-      <div class="msg"><div class="meta"><span class="who me">you</span>21:07<span class="dr">delivered</span></div>
-        <div class="file">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7a828e" stroke-width="1.5"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 10l4-2v8l-4-2"/></svg>
-          <div style="flex:1"><div class="fn">canyon-drive.mp4 · 1.4 GB</div><div class="bar"><i></i></div><div class="paused">⏸ paused: bob went offline · resumes when he's back</div></div>
-        </div>
-      </div>
-    </section>
-
-    <div class="pane compose">
-      <textarea placeholder="type a message…  (enter to send, shift+enter for a new line)"></textarea>
-      <div class="tools">
-        <button class="tool"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 16l-5-5-8 8"/></svg><span><u>P</u>hotos</span></button>
-        <button class="tool"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg><span><u>V</u>ideo</span></button>
-        <button class="tool"><svg viewBox="0 0 24 24"><path d="M21 11.5l-8.5 8.5a5 5 0 01-7-7L14 4.5a3.3 3.3 0 014.7 4.7L10.2 17.7a1.7 1.7 0 01-2.4-2.4L15.5 7.6"/></svg><span><u>F</u>ile</span></button>
-        <button class="tool"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg><span><u>A</u>lbum</span></button>
-        <div class="sp"></div>
-        <span class="hint">or drop files anywhere</span>
-        <button class="tool send">Send <svg viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg></button>
-      </div>
-    </div>
-  </main>
+  <!-- info pane: has an × and closes on Esc -->
+  <aside class="pane info" id="info">
+    <div style="display:flex;align-items:center"><div class="title">Info · bob</div><button class="x" id="closeInfo" title="Close (Esc)">×</button></div>
+    <h3>Safety code</h3>
+    <div class="code">48213 90577 12048 66391</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:6px">Compare with bob over another app or in person. If they match, mark verified.</div>
+    <h3>Connection</h3>
+    <div style="font:13px var(--mono)"><span class="dot"></span> direct</div>
+  </aside>
 </div>
+<script>
+  // Pixel identicon from a public key: both sides compute the same picture, no image is sent.
+  function hash(s){ let h=2166136261; for (const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619)>>>0 } return h }
+  document.querySelectorAll('canvas[data-key]').forEach(cv => {
+    const g=cv.getContext('2d'); let h=hash(cv.dataset.key); const hue=h%360
+    g.fillStyle='#0b0d10'; g.fillRect(0,0,10,10); g.fillStyle=`hsl(${hue} 65% 62%)`
+    for (let y=1;y<9;y++) for (let x=1;x<5;x++){ h=Math.imul(h^(h>>>13),1274126177)>>>0; if (h&1){ g.fillRect(x,y,1,1); g.fillRect(9-x,y,1,1) } }
+  })
+  const $=id=>document.getElementById(id)
+  const drawer=$('drawer'), scrim=$('scrim'), info=$('info')
+  const openD=()=>{ drawer.classList.add('open'); scrim.classList.add('open') }
+  const closeAll=()=>{ drawer.classList.remove('open'); scrim.classList.remove('open'); info.classList.remove('open') }
+  $('openBuddies').onclick=openD; $('closeBuddies').onclick=closeAll; scrim.onclick=closeAll
+  $('openInfo').onclick=$('openInfo2').onclick=()=>info.classList.add('open'); $('closeInfo').onclick=closeAll
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeAll() })
+</script>
 </body>
 </html>

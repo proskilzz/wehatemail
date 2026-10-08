@@ -12,38 +12,51 @@ the desk, a terminal in the corner. **The source of truth is the mockup
 | **BlackBerry Messenger** | Contact header with a **status line** under the name, message groups with a small "name · time" header, the idea of showing delivery state on every message (but in plain words, not BBM's cryptic D/R), the bright blue blinking cursor | Glossy gradients, speech-bubble tails |
 | **AIM** | **Blue name for me, red for them**, the **big compose box**, the **bottom button bar** of labelled icons with **Send** set apart on the right, "Buddy List" wording, a door sound when someone comes online | The formatting toolbar, Warn/Games, busy XP chrome |
 
-## Layout
+## Layout: one-on-one first (AIM style)
 
 ```
-┌─ Buddies ───────────┬─ Bob ● Connected · direct ───────── [ⓘ] ┐
-│ ▌Bob            ●   │                                          │
-│  Sam            2   │  bob · 21:04                             │
-│  Mia     away…      │  you there?                              │
-│                     │                                          │
-│                     │  you · 21:05                   seen 21:06│
-│                     │  yep! sending the trip pics              │
-│                     │  ┌────┬────┐                             │
-│                     │  │ 🖼 │ 🖼 │  album, 2×2 grid, "+N" tile │
-│                     │  ├────┼────┤                             │
-│                     │  │ 🖼 │ +3 │                             │
-│                     │  └────┴────┘                             │
-│                     │  [file card · ▓▓▓░░ 62% · Paused: Bob   │
-│                     │   is offline]                            │
-│ [ + Invite ]        ├──────────────────────────────────────────┤
-│                     │ ┃ Type a message…   (big: 5 lines, grows)│
-│ you · status line   ├──────────────────────────────────────────┤
-│ ● online            │ [Photos] [Video] [File] [Album]  [Send ▸]│
-└─────────────────────┴──────────────────────────────────────────┘
+┌──────────┬─ bob ─ for extra security, compare codes · Info ─ ● connected ─ ⓘ ┐
+│≡ buddies①│                                                                  │
+├──────────┼──────────────────────────────────────────────────────────────────┤
+│ ┌──────┐ │  bob · 21:04                                                     │
+│ │ ▚▞▚▞ │ │  you there?                                                      │
+│ │ ▞▚▞▚ │ │  you · 21:05                                        seen 21:06   │
+│ └──────┘ │  sending the pics now   [album grid, +N]                         │
+│   bob    │                                                                  │
+│ on the   │                                                                  │
+│ road 🚐  │                                                                  │
+├──────────┼──────────────────────────────────────────────────────────────────┤
+│ ┌──────┐ │ ┃ type a message…   (big: 5 lines, grows)                        │
+│ │ ▞▚▞▚ │ │                                                                  │
+│ └──────┘ ├──────────────────────────────────────────────────────────────────┤
+│   you    │ [Photos] [Video] [File] [Album]                       [Send ▸]   │
+└──────────┴──────────────────────────────────────────────────────────────────┘
 ```
 
-- **Two panes by default.** The ⓘ button opens a third "Info" pane on the right
-  (isle.chat style) with the ASCII logo, safety code, connection type and the
-  limitations. It's closed by default to keep things simple.
+- **The app is built for one conversation at a time.** There's no always-on
+  sidebar. Like the AIM window, a narrow left column shows **two avatar boxes**:
+  - **their avatar on top,** beside the message log (name in red, status line under it)
+  - **your avatar on the bottom,** beside the compose box (name "you" in blue, your status line under it)
+
+  The avatar frames are tinted with the name colours.
+- **Avatars are pixel identicons** made from each person's public key: a 5×8
+  mirrored pixel grid, one hue, on the dark background. Both sides work out the
+  same picture, so nothing is sent and no protocol change is needed. The
+  picture also helps people notice if a key ever changes. Custom pictures come
+  later.
+- **Buddies button** (`≡ buddies`) at the top of the left column, always
+  there. A green number badge shows unread messages in *other* chats.
+  Clicking it slides the **Buddies drawer** over the left side: the buddy list
+  (green selection bar, presence dots, unread counts), `+ invite someone`, and
+  an **×** to close. Esc and clicking outside close it too. Picking a buddy
+  switches the chat and closes the drawer.
+- **Info pane** opens from the ⓘ button or the "Info" link and slides over
+  the right side. It has an **×** in its top-right corner, and Esc and clicking
+  outside close it.
 - **Compose:** at least 5 lines tall and grows up to 40% of the window. Enter
   sends, Shift+Enter adds a new line. You can drop files anywhere in the window.
-- **Bottom bar** (AIM): labelled icon buttons for Photos, Video, File and Album,
-  with Send separated on the right. Icons are thin 1.5px line icons, not
-  cartoon ones.
+- **Bottom bar** (AIM): labelled line-icon buttons for Photos, Video, File and
+  Album, with Send separated on the right.
 
 ## Colour tokens
 
@@ -78,8 +91,7 @@ the desk, a terminal in the corner. **The source of truth is the mockup
   `sending…` (muted) → `waiting for bob` (amber, while they're offline) →
   `delivered` (muted) → `seen 21:06` (green) / `failed · retry` (red, clickable).
   Hovering shows full times ("Delivered 21:05 · Seen 21:06").
-- A status line under your name and theirs (BBM / AIM away message), editable
-  in the sidebar.
+- A status line under each avatar (BBM / AIM away message). Click yours to edit it.
 - System lines (joined, verified, paused) use a `SYS` badge, isle.chat style.
 - The block caret blinks in BBM blue.
 - **Sounds off by default.** When turned on: our *own* soft "door" sounds when
