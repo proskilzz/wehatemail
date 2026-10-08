@@ -1,6 +1,6 @@
 export { Engine, compareMessages } from './engine.ts'
-export type { EngineOptions, Contact, Message, MessageStatus, Invite, Presence } from './engine.ts'
-export { MemorySecretStore, FileSecretStore, SafeStorageSecretStore } from './secrets.ts'
+export type { EngineOptions, Contact, Message, MessageStatus, Invite, Presence, Attachment, Preview, OutgoingFile, Transfer, TransferState } from './engine.ts'
+export { MemorySecretStore, FileSecretStore, SafeStorageSecretStore, keychainMessage } from './secrets.ts'
 export type { SecretStore, SafeStorageLike } from './secrets.ts'
 export { dmTopic, safetyCode } from './keys.ts'
 export { parseInvite, inviteLinks, JOIN_URL, APP_URL } from './invite-link.ts'

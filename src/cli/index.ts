@@ -166,7 +166,8 @@ async function main () {
   engine.on('message', (id: string, m: Message) => {
     if (m.fromMe) return
     const c = engine.contact(id)
-    print(`[${time(m.timestamp)}] ${c.name}: ${m.text}`)
+    const files = m.attachments.map(a => `[${a.kind}: ${a.name}]`).join(' ')
+    print(`[${time(m.timestamp)}] ${c.name}: ${[m.text, files].filter(Boolean).join(' ')}`)
     if (current?.id === id) engine.markRead(id).catch(() => {})
   })
   engine.on('typing', (id: string, typing: boolean) => {

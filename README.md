@@ -69,7 +69,7 @@ Lessons taken from [Matrix](https://matrix.org) (see the spec). Inspired by [Kee
 
 - **M1:** core P2P engine (pairing, chat, offline queue), tested headless
 - **M2:** desktop app and chat UI (dark theme)
-- **M3:** pictures, albums, videos, files, with pause/resume
+- **M3:** pictures, albums, videos, files, with pause/resume (done: Photos, Video, File and Album buttons, or drop files on the window; Alt+P/V/F/A)
 - **M4:** invite links, QR codes and the wehatemail.com join page
 - **M5:** installers for macOS, Windows and Linux via GitHub Actions
 - **Later:** multiple devices, backup, group spaces, Tor mode, mobile

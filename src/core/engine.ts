@@ -4,6 +4,9 @@ import path from 'node:path'
 import Hyperswarm from 'hyperswarm'
 import HyperDHT from 'hyperdht'
 import Corestore from 'corestore'
+import Hyperblobs from 'hyperblobs'
+import { createHash } from 'node:crypto'
+import { createReadStream, createWriteStream } from 'node:fs'
 import Protomux from 'protomux'
 import BlindPairing from 'blind-pairing'
 import { createInvite, decodeInvite } from 'blind-pairing-core'
@@ -11,8 +14,8 @@ import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 import type { SecretStore } from './secrets.ts'
 import {
-  PROTOCOL_VERSION, EventType, chatEvent, peerInfo, hello, encode, decode, c,
-  type ChatEvent, type PeerInfo, type Hello
+  PROTOCOL_VERSION, EventType, AttachmentKind, chatEvent, peerInfo, hello, encode, decode, c,
+  type ChatEvent, type PeerInfo, type Hello, type AttachmentRef
 } from './encoding.ts'
 import { dmTopic, safetyCode } from './keys.ts'
 import { inviteToCode, inviteLinks, parseInvite } from './invite-link.ts'
@@ -21,6 +24,8 @@ const INVITE_TTL = 24 * 60 * 60 * 1000
 const TYPING_TIMEOUT = 6000
 const SIGNALS_PROTOCOL = 'wehatemail/v1/signals'
 const PAIRING_GRACE = 30000
+const TRANSFER_TICK = 250
+const SPEED_WINDOW = 3000
 
 export interface EngineOptions {
   /** Folder for this device's data (logs and state). */
@@ -60,6 +65,58 @@ export interface Contact {
 
 export type MessageStatus = 'waiting' | 'delivered' | 'read'
 
+export interface Attachment {
+  index: number
+  kind: 'image' | 'video' | 'file'
+  name: string
+  mime: string
+  size: number
+  width: number
+  height: number
+  /** Video length in ms. */
+  duration: number
+  blurhash: string
+  /** Small JPEG, ready to show before the full file has arrived. */
+  thumb: Uint8Array | null
+}
+
+/** Sender-made preview of a picture or video. The engine can't decode media itself. */
+export interface Preview {
+  width: number
+  height: number
+  duration?: number
+  blurhash?: string
+  thumb?: Uint8Array
+}
+
+export interface OutgoingFile {
+  /** Absolute path of the file to send. */
+  path: string
+  /** Name shown to the other person. Defaults to the file's own name. */
+  name?: string
+  mime: string
+  preview?: Preview
+}
+
+/**
+ * `active`: moving (or about to). `paused`: the other side is offline, it
+ * picks up where it stopped. `done`, `failed`: final (failed = the bytes that
+ * arrived don't match the sender's checksum; retry downloads them again).
+ */
+export type TransferState = 'active' | 'paused' | 'done' | 'failed'
+
+export interface Transfer {
+  messageId: string
+  index: number
+  direction: 'out' | 'in'
+  state: TransferState
+  /** Bytes moved so far. */
+  done: number
+  total: number
+  /** Bytes per second right now. 0 when idle. */
+  speed: number
+}
+
 export interface Message {
   /** `<author id>:<seq>`. Stable across both devices. */
   id: string
@@ -67,11 +124,17 @@ export interface Message {
   fromMe: boolean
   seq: number
   timestamp: number
+  /** The text, or the caption of an album or file. */
   text: string
+  kind: 'text' | 'media' | 'file'
+  attachments: Attachment[]
   edited: boolean
   deleted: boolean
-  /** Only set on my own messages. "waiting" = one grey tick. */
+  /** Only set on my own messages. */
   status?: MessageStatus
+  /** When it was delivered / seen (ms). Set along with `status`. */
+  deliveredAt?: number
+  readAt?: number
 }
 
 export interface Invite {
@@ -89,6 +152,14 @@ interface ContactRecord {
   addedAt: number
   verified: boolean
   theirCoreKey: string | null
+  theirBlobsKey: string | null
+  /** How many blocks of my blob log they have (upload progress). */
+  blobsDelivered: number
+  /** When my events were delivered / read: `[count, time]` checkpoints, newest last. */
+  deliveredTimes: [number, number][]
+  readTimes: [number, number][]
+  /** Final result per received attachment, `<message id>#<index>`. */
+  transfers: Record<string, 'done' | 'failed'>
   /** How many of my events they have. */
   delivered: number
   /** How many of my events they've read. */
@@ -113,18 +184,33 @@ interface State {
   invites: InviteRecord[]
 }
 
+interface Item {
+  mine: boolean
+  messageId: string
+  index: number
+  ref: AttachmentRef
+}
+
 interface Conversation {
   record: ContactRecord
   publicKey: Buffer
   convKey: Buffer
   mine: any
+  mineBlobs: any
   theirs: any | null
+  theirBlobs: any | null
+  items: Item[]
+  verifying: boolean
+  traffic: { at: number, bytes: number }[]
+  tick: NodeJS.Timeout | null
+  tickDirty: boolean
+  sentBlobs: number
   processed: number
   processing: Promise<void> | null
   discovery: any
   conn: any | null
   channel: any | null
-  messages: { hello: any, typing: any, received: any, read: any } | null
+  messages: { hello: any, typing: any, received: any, read: any, blobs: any } | null
   online: boolean
   typingTimer: NodeJS.Timeout | null
 }
@@ -139,6 +225,7 @@ interface Conversation {
  *   'message'  (contactId, message)         a new text message arrived (or I sent one)
  *   'update'   (contactId, messageId)       a message was edited or deleted
  *   'status'   (contactId)                  delivery/read state of my messages changed
+ *   'transfer' (contactId)                  progress or state of an attachment changed (throttled)
  *   'typing'   (contactId, isTyping)
  *   'invites'  ()                           the invite list changed
  */
@@ -213,6 +300,7 @@ export class Engine extends EventEmitter {
     await this.opening?.catch(() => {})
     for (const conv of this.conversations.values()) {
       if (conv.typingTimer) clearTimeout(conv.typingTimer)
+      if (conv.tick) clearTimeout(conv.tick)
     }
     if (this.pairing) await this.pairing.close()
     if (this.swarm) await this.swarm.destroy()
@@ -411,6 +499,11 @@ export class Engine extends EventEmitter {
       addedAt: Date.now(),
       verified: false,
       theirCoreKey: null,
+      theirBlobsKey: null,
+      blobsDelivered: 0,
+      deliveredTimes: [],
+      readTimes: [],
+      transfers: {},
       delivered: 0,
       read: 0,
       myRead: 0,
@@ -435,13 +528,24 @@ export class Engine extends EventEmitter {
     const publicKey = b4a.from(record.publicKey, 'hex')
     const mine = this.store.get({ name: 'dm/' + record.publicKey, encryption: { key: convKey } })
     await mine.ready()
+    // Attachments live in a second log of mine (Hyperblobs), encrypted the same way.
+    const mineBlobsCore = this.store.get({ name: 'blobs/' + record.publicKey, encryption: { key: convKey } })
+    await mineBlobsCore.ready()
 
     const conv: Conversation = {
       record,
       publicKey,
       convKey,
       mine,
+      mineBlobs: new Hyperblobs(mineBlobsCore),
       theirs: null,
+      theirBlobs: null,
+      items: [],
+      verifying: false,
+      traffic: [],
+      tick: null,
+      tickDirty: false,
+      sentBlobs: -1,
       processed: 0,
       processing: null,
       discovery: null,
@@ -452,7 +556,10 @@ export class Engine extends EventEmitter {
       typingTimer: null
     }
     this.conversations.set(record.publicKey, conv)
+    mineBlobsCore.on('upload', (_i: number, bytes: number) => { this.noteBytes(conv, bytes) })
+    await this.scanItems(conv, mine, true, 0, mine.length)
     if (record.theirCoreKey) await this.openTheirs(conv, b4a.from(record.theirCoreKey, 'hex'))
+    if (record.theirBlobsKey) await this.openTheirBlobs(conv, b4a.from(record.theirBlobsKey, 'hex'))
 
     conv.discovery = this.swarm.join(dmTopic(this.requireKeyPair().publicKey, publicKey), { server: true, client: true })
     // Also dial the contact's key directly. Hyperswarm keeps retrying this
@@ -467,10 +574,40 @@ export class Engine extends EventEmitter {
     await theirs.ready()
     conv.theirs = theirs
     conv.processed = theirs.contiguousLength
+    await this.scanItems(conv, theirs, false, 0, conv.processed)
     theirs.download({ start: 0, end: -1 })
     const onchange = () => { this.processTheirs(conv).catch(err => this.emit('warning', conv.record.publicKey, String(err?.message ?? err))) }
     theirs.on('append', onchange)
     theirs.on('download', onchange)
+  }
+
+  private async openTheirBlobs (conv: Conversation, key: Buffer) {
+    const core = this.store.get({ key, encryption: { key: conv.convKey } })
+    await core.ready()
+    conv.theirBlobs = new Hyperblobs(core)
+    core.download({ start: 0, end: -1 })
+    core.on('download', (_i: number, bytes: number) => {
+      this.noteBytes(conv, bytes)
+      this.verifyArrived(conv)
+    })
+    this.verifyArrived(conv)
+  }
+
+  /** Remember which attachments a log holds, so progress and checks don't re-read it. */
+  private async scanItems (conv: Conversation, core: any, mine: boolean, from: number, to: number) {
+    for (let seq = from; seq < to; seq++) {
+      const event = decode<ChatEvent>(chatEvent, await core.get(seq))
+      this.addItems(conv, mine, seq, event)
+    }
+  }
+
+  private addItems (conv: Conversation, mine: boolean, seq: number, event: ChatEvent) {
+    if (event.type !== EventType.MEDIA && event.type !== EventType.FILE) return
+    const messageId = (mine ? this.id : conv.record.publicKey) + ':' + seq
+    ;(event as any).items.forEach((ref: AttachmentRef, index: number) => {
+      conv.items.push({ mine, messageId, index, ref })
+    })
+    this.verifyArrived(conv)
   }
 
   private async processTheirs (conv: Conversation) {
@@ -482,8 +619,10 @@ export class Engine extends EventEmitter {
         const seq = conv.processed
         const event = decode<ChatEvent>(chatEvent, await theirs.get(seq))
         conv.processed++
-        if (event.type === EventType.TEXT) {
+        if (event.type === EventType.TEXT || event.type === EventType.MEDIA || event.type === EventType.FILE) {
+          this.addItems(conv, false, seq, event)
           this.emit('message', id, this.toMessage(conv, false, seq, event))
+          this.scheduleTransfer(conv)
         } else if (event.type === EventType.EDIT || event.type === EventType.DELETE) {
           this.emit('update', id, conv.record.publicKey + ':' + (event as any).target)
         }
@@ -509,6 +648,212 @@ export class Engine extends EventEmitter {
     const message = this.toMessage(conv, true, length - 1, event)
     this.emit('message', contactId, message)
     return message
+  }
+
+  /**
+   * Send pictures, videos and files. Images and videos go together as one
+   * album message; every other file is its own message. `text` is the caption
+   * of the first message. Resolves once the bytes are in my blob log and the
+   * messages are in my chat log (the other person gets them when online).
+   */
+  async sendFiles (contactId: string, files: OutgoingFile[], text = ''): Promise<Message[]> {
+    if (!files.length) throw new Error('No files to send')
+    const conv = this.conv(contactId)
+    const media: AttachmentRef[] = []
+    const others: AttachmentRef[] = []
+    for (const file of files) {
+      const ref = await this.putFile(conv, file)
+      ;(ref.kind === AttachmentKind.FILE ? others : media).push(ref)
+    }
+    const events: { type: typeof EventType.MEDIA | typeof EventType.FILE, items: AttachmentRef[] }[] = []
+    if (media.length) events.push({ type: EventType.MEDIA, items: media })
+    for (const ref of others) events.push({ type: EventType.FILE, items: [ref] })
+
+    const out: Message[] = []
+    for (const [i, e] of events.entries()) {
+      const event = { version: PROTOCOL_VERSION, timestamp: Date.now(), text: i === 0 ? text : '', ...e }
+      const { length } = await conv.mine.append(encode(chatEvent, event))
+      this.addItems(conv, true, length - 1, event)
+      const message = this.toMessage(conv, true, length - 1, event)
+      out.push(message)
+      this.emit('message', contactId, message)
+    }
+    this.scheduleTransfer(conv)
+    return out
+  }
+
+  /** Copy one file into my blob log, hashing it on the way. Streams, so size doesn't matter. */
+  private async putFile (conv: Conversation, file: OutgoingFile): Promise<AttachmentRef> {
+    const st = await fs.stat(file.path)
+    if (!st.isFile()) throw new Error('Not a file: ' + path.basename(file.path))
+    const hash = createHash('sha256')
+    const ws = conv.mineBlobs.createWriteStream()
+    const rs = createReadStream(file.path, { highWaterMark: 64 * 1024 })
+    await new Promise<void>((resolve, reject) => {
+      rs.on('data', chunk => hash.update(chunk as Buffer))
+      rs.on('error', err => { ws.destroy(); reject(err) })
+      ws.once('error', reject)
+      ws.once('close', () => resolve())
+      rs.pipe(ws)
+    })
+    const id = ws.id
+    const p = file.preview
+    return {
+      kind: file.mime.startsWith('image/') ? AttachmentKind.IMAGE : file.mime.startsWith('video/') ? AttachmentKind.VIDEO : AttachmentKind.FILE,
+      name: (file.name ?? path.basename(file.path)).slice(0, 255),
+      mime: file.mime.slice(0, 127),
+      size: id.byteLength,
+      sha256: hash.digest(),
+      blockOffset: id.blockOffset,
+      blockLength: id.blockLength,
+      byteOffset: id.byteOffset,
+      byteLength: id.byteLength,
+      width: p?.width ?? 0,
+      height: p?.height ?? 0,
+      duration: Math.round(p?.duration ?? 0),
+      blurhash: p?.blurhash ?? '',
+      thumb: p?.thumb ? Buffer.from(p.thumb) : Buffer.alloc(0)
+    }
+  }
+
+  /** Progress of every attachment in this conversation. */
+  transfers (contactId: string): Transfer[] {
+    const conv = this.conv(contactId)
+    const online = conv.online
+    const speed = this.speed(conv)
+    return conv.items.map(item => {
+      const { ref } = item
+      const total = ref.size
+      const base = { messageId: item.messageId, index: item.index, direction: item.mine ? 'out' as const : 'in' as const, total }
+      const final = item.mine ? null : conv.record.transfers[item.messageId + '#' + item.index]
+      if (final) return { ...base, state: final, done: final === 'done' ? total : 0, speed: 0 }
+      const have = item.mine ? conv.record.blobsDelivered : (conv.theirBlobs?.core.contiguousLength ?? 0)
+      const frac = ref.blockLength === 0 ? 1 : Math.min(1, Math.max(0, (have - ref.blockOffset) / ref.blockLength))
+      if (item.mine && frac === 1) return { ...base, state: 'done' as const, done: total, speed: 0 }
+      return { ...base, state: online ? 'active' as const : 'paused' as const, done: Math.floor(total * frac), speed: online ? speed : 0 }
+    })
+  }
+
+  /** Download a failed attachment again. */
+  async retryTransfer (contactId: string, messageId: string, index: number) {
+    const conv = this.conv(contactId)
+    const item = this.findItem(conv, messageId, index)
+    const key = messageId + '#' + index
+    if (item.mine || conv.record.transfers[key] !== 'failed' || !conv.theirBlobs) return
+    const { blockOffset, blockLength } = item.ref
+    await conv.theirBlobs.core.clear(blockOffset, blockOffset + blockLength)
+    delete conv.record.transfers[key]
+    await this.save()
+    conv.theirBlobs.core.download({ start: blockOffset, end: blockOffset + blockLength })
+    this.scheduleTransfer(conv)
+    this.verifyArrived(conv)
+  }
+
+  /** Name, type and size of one attachment. Cheap, so safe to call per playback request. */
+  attachmentInfo (contactId: string, messageId: string, index: number): { name: string, mime: string, size: number } {
+    const { ref } = this.findItem(this.conv(contactId), messageId, index)
+    return { name: ref.name, mime: ref.mime, size: ref.size }
+  }
+
+  /** The bytes of a finished attachment, optionally a byte range (inclusive end), for playback. */
+  readAttachment (contactId: string, messageId: string, index: number, range: { start?: number, end?: number } = {}): AsyncIterable<Buffer> {
+    const conv = this.conv(contactId)
+    const item = this.findItem(conv, messageId, index)
+    if (!item.mine && conv.record.transfers[messageId + '#' + index] !== 'done') {
+      throw new Error('This file has not finished arriving')
+    }
+    const { blockOffset, blockLength, byteOffset, byteLength } = item.ref
+    const blobs = item.mine ? conv.mineBlobs : conv.theirBlobs
+    if (byteLength === 0) return (async function * () {})()
+    return blobs.createReadStream({ blockOffset, blockLength, byteOffset, byteLength }, { ...range, wait: false })
+  }
+
+  /** Copy a finished attachment to `dest`. */
+  async saveAttachment (contactId: string, messageId: string, index: number, dest: string) {
+    const source = this.readAttachment(contactId, messageId, index)
+    const out = createWriteStream(dest)
+    try {
+      for await (const chunk of source) {
+        if (!out.write(chunk)) await new Promise<void>(resolve => out.once('drain', () => resolve()))
+      }
+      await new Promise<void>((resolve, reject) => { out.once('error', reject); out.end(resolve) })
+    } catch (err) {
+      out.destroy()
+      throw err
+    }
+  }
+
+  private findItem (conv: Conversation, messageId: string, index: number): Item {
+    const item = conv.items.find(i => i.messageId === messageId && i.index === index)
+    if (!item) throw new Error('Unknown attachment')
+    return item
+  }
+
+  /** Check the checksum of every attachment that has fully arrived. One at a time. */
+  private verifyArrived (conv: Conversation) {
+    const blobs = conv.theirBlobs
+    if (!blobs || conv.verifying || this.closed) return
+    const contiguous = blobs.core.contiguousLength
+    const next = conv.items.find(i => !i.mine &&
+      !conv.record.transfers[i.messageId + '#' + i.index] &&
+      i.ref.blockOffset + i.ref.blockLength <= contiguous)
+    if (!next) return
+    conv.verifying = true
+    ;(async () => {
+      const hash = createHash('sha256')
+      let ok = true
+      try {
+        if (next.ref.byteLength > 0) {
+          const { blockOffset, blockLength, byteOffset, byteLength } = next.ref
+          for await (const chunk of blobs.createReadStream({ blockOffset, blockLength, byteOffset, byteLength }, { wait: false })) {
+            hash.update(chunk)
+          }
+        }
+        ok = b4a.equals(hash.digest(), next.ref.sha256)
+      } catch {
+        ok = false
+      }
+      conv.record.transfers[next.messageId + '#' + next.index] = ok ? 'done' : 'failed'
+      await this.save()
+    })().catch(() => {}).finally(() => {
+      conv.verifying = false
+      this.scheduleTransfer(conv)
+      this.verifyArrived(conv)
+    })
+  }
+
+  private noteBytes (conv: Conversation, bytes: number) {
+    conv.traffic.push({ at: Date.now(), bytes })
+    this.scheduleTransfer(conv)
+  }
+
+  private speed (conv: Conversation): number {
+    const cutoff = Date.now() - SPEED_WINDOW
+    while (conv.traffic.length && conv.traffic[0].at < cutoff) conv.traffic.shift()
+    if (!conv.traffic.length) return 0
+    let sum = 0
+    for (const t of conv.traffic) sum += t.bytes
+    return Math.round(sum / (SPEED_WINDOW / 1000))
+  }
+
+  /** Tell the app (and the sender) about progress, at most every TRANSFER_TICK ms. */
+  private scheduleTransfer (conv: Conversation) {
+    if (this.closed) return
+    conv.tickDirty = true
+    if (conv.tick) return
+    conv.tick = setTimeout(() => {
+      conv.tick = null
+      if (this.closed || !conv.tickDirty) return
+      conv.tickDirty = false
+      const have = conv.theirBlobs?.core.contiguousLength ?? 0
+      if (have !== conv.sentBlobs && conv.messages) {
+        conv.sentBlobs = have
+        conv.messages.blobs.send(have)
+      }
+      this.emit('transfer', conv.record.publicKey)
+      // Keep ticking while bytes are still moving, so speed decays to zero.
+      if (conv.traffic.length) this.scheduleTransfer(conv)
+    }, TRANSFER_TICK)
   }
 
   async editMessage (contactId: string, messageId: string, text: string) {
@@ -540,7 +885,7 @@ export class Engine extends EventEmitter {
       const byId = new Map<number, Message>()
       for (let seq = 0; seq < length; seq++) {
         const event = decode<ChatEvent>(chatEvent, await core.get(seq))
-        if (event.type === EventType.TEXT) {
+        if (event.type === EventType.TEXT || event.type === EventType.MEDIA || event.type === EventType.FILE) {
           const m = this.toMessage(conv, fromMe, seq, event)
           byId.set(seq, m)
           out.push(m)
@@ -552,6 +897,7 @@ export class Engine extends EventEmitter {
             m.edited = true
           } else {
             m.text = ''
+            m.attachments = []
             m.deleted = true
           }
         }
@@ -629,10 +975,13 @@ export class Engine extends EventEmitter {
     const channel = mux.createChannel({
       protocol: SIGNALS_PROTOCOL,
       onopen: () => {
+        conv.sentBlobs = conv.theirBlobs?.core.contiguousLength ?? 0
         conv.messages!.hello.send({
           coreKey: conv.mine.key,
+          blobsKey: conv.mineBlobs.key,
           receivedLength: conv.processed,
-          readLength: conv.record.myRead
+          readLength: conv.record.myRead,
+          blobsLength: conv.sentBlobs
         })
         this.setOnline(conv, true)
       },
@@ -645,7 +994,8 @@ export class Engine extends EventEmitter {
       hello: channel.addMessage({ encoding: hello, onmessage: (m: Hello) => this.onhello(conv, m) }),
       typing: channel.addMessage({ encoding: c.bool, onmessage: (t: boolean) => this.ontyping(conv, t) }),
       received: channel.addMessage({ encoding: c.uint, onmessage: (n: number) => this.onreceipt(conv, n, 'delivered') }),
-      read: channel.addMessage({ encoding: c.uint, onmessage: (n: number) => this.onreceipt(conv, n, 'read') })
+      read: channel.addMessage({ encoding: c.uint, onmessage: (n: number) => this.onreceipt(conv, n, 'read') }),
+      blobs: channel.addMessage({ encoding: c.uint, onmessage: (n: number) => this.onblobs(conv, n) })
     }
     if (conv.channel) conv.channel.close()
     conv.conn = conn
@@ -673,6 +1023,7 @@ export class Engine extends EventEmitter {
     if (conv.online === online) return
     conv.online = online
     this.emit('presence', conv.record.publicKey, this.presence(conv))
+    this.scheduleTransfer(conv)
   }
 
   private async onhello (conv: Conversation, m: Hello) {
@@ -686,16 +1037,34 @@ export class Engine extends EventEmitter {
       // v1 is one device per person: a different log means something is off.
       this.emit('warning', conv.record.publicKey, 'Contact sent a different chat log than before; ignored')
     }
+    if (!conv.record.theirBlobsKey) {
+      conv.record.theirBlobsKey = m.blobsKey.toString('hex')
+      await this.save()
+      await this.openTheirBlobs(conv, m.blobsKey)
+    } else if (conv.record.theirBlobsKey !== m.blobsKey.toString('hex')) {
+      this.emit('warning', conv.record.publicKey, 'Contact sent a different file log than before; ignored')
+    }
     this.onreceipt(conv, m.receivedLength, 'delivered')
     this.onreceipt(conv, m.readLength, 'read')
+    this.onblobs(conv, m.blobsLength)
+  }
+
+  /** They now hold the first N blocks of my blob log. */
+  private onblobs (conv: Conversation, n: number) {
+    n = Math.min(n, conv.mineBlobs.core.length)
+    if (n <= conv.record.blobsDelivered) return
+    conv.record.blobsDelivered = n
+    this.save().catch(() => {})
+    this.scheduleTransfer(conv)
   }
 
   private onreceipt (conv: Conversation, n: number, kind: 'delivered' | 'read') {
     const r = conv.record
     n = Math.min(n, conv.mine.length)
     let changed = false
-    if (n > r.delivered) { r.delivered = n; changed = true }
-    if (kind === 'read' && n > r.read) { r.read = n; changed = true }
+    const now = Date.now()
+    if (n > r.delivered) { r.delivered = n; changed = true; checkpoint(r.deliveredTimes, n, now) }
+    if (kind === 'read' && n > r.read) { r.read = n; changed = true; checkpoint(r.readTimes, n, now) }
     if (!changed) return
     this.save().catch(() => {})
     this.emit('status', r.publicKey)
@@ -745,12 +1114,16 @@ export class Engine extends EventEmitter {
       fromMe,
       seq,
       timestamp: event.timestamp,
-      text: event.text,
+      text: event.text ?? '',
+      kind: event.type === EventType.MEDIA ? 'media' : event.type === EventType.FILE ? 'file' : 'text',
+      attachments: (event.items ?? []).map(toAttachment),
       edited: false,
       deleted: false
     }
     if (fromMe) {
       m.status = seq < conv.record.read ? 'read' : seq < conv.record.delivered ? 'delivered' : 'waiting'
+      if (m.status !== 'waiting') m.deliveredAt = timeFor(conv.record.deliveredTimes, seq)
+      if (m.status === 'read') m.readAt = timeFor(conv.record.readTimes, seq)
     }
     return m
   }
@@ -768,6 +1141,14 @@ export class Engine extends EventEmitter {
     try {
       const raw = JSON.parse(await fs.readFile(this.stateFile(), 'utf8'))
       this.state = { name: raw.name ?? null, contacts: raw.contacts ?? [], invites: raw.invites ?? [] }
+      // State written by older versions lacks the file fields.
+      for (const r of this.state.contacts) {
+        r.theirBlobsKey ??= null
+        r.blobsDelivered ??= 0
+        r.deliveredTimes ??= []
+        r.readTimes ??= []
+        r.transfers ??= {}
+      }
     } catch (err: any) {
       if (err.code !== 'ENOENT') throw err
     }
@@ -786,6 +1167,33 @@ export class Engine extends EventEmitter {
 
   private stateFile () {
     return path.join(this.opts.storage, 'state.json')
+  }
+}
+
+const MAX_CHECKPOINTS = 200
+
+function checkpoint (list: [number, number][], n: number, at: number) {
+  list.push([n, at])
+  if (list.length > MAX_CHECKPOINTS) list.shift()
+}
+
+/** The time the checkpoint that first covered event `seq` was recorded. */
+function timeFor (list: [number, number][], seq: number): number | undefined {
+  return list.find(([n]) => n > seq)?.[1] ?? list[0]?.[1]
+}
+
+function toAttachment (a: AttachmentRef, index: number): Attachment {
+  return {
+    index,
+    kind: a.kind === AttachmentKind.IMAGE ? 'image' : a.kind === AttachmentKind.VIDEO ? 'video' : 'file',
+    name: a.name,
+    mime: a.mime,
+    size: a.size,
+    width: a.width,
+    height: a.height,
+    duration: a.duration,
+    blurhash: a.blurhash,
+    thumb: a.thumb.length ? new Uint8Array(a.thumb) : null
   }
 }
 

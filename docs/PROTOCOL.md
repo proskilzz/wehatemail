@@ -59,6 +59,11 @@ PeerInfo {
 
 - Each person has one Hypercore per conversation (`corestore` name
   `dm/<contact id>`), which only they can write to. The peer replicates it.
+- Each person also has a **blob log** per conversation (`blobs/<contact id>`, a
+  Hypercore used through `hyperblobs`) that holds attachment bytes. Chat events
+  only point into it. It is encrypted with the conversation key like the chat
+  log, and replicated on the same connection. The receiver downloads it in full,
+  so an interrupted transfer resumes at the next missing block.
 - Both logs are encrypted with the conversation key (Hypercore block
   encryption), on disk and in transit (on top of Noise).
 - The log key is announced in the `hello` signal (below).
@@ -78,8 +83,20 @@ Event {
 }
 
 1 text    { text: string }
-2 media   (M3)
-3 file    (M3)
+2 media   { text: string (caption), items: Attachment[] }  // an album: 1..N images/videos
+3 file    { text: string (caption), items: Attachment[] }  // one plain file
+
+Attachment {
+  kind: uint        // 0 image, 1 video, 2 file
+  name, mime: string
+  size: uint        // bytes
+  sha256: fixed32   // checked by the receiver when the file has fully arrived
+  blockOffset, blockLength, byteOffset, byteLength: uint   // Hyperblobs id in the author's blob log
+  width, height: uint
+  duration: uint    // ms, videos only
+  blurhash: string
+  thumb: buffer     // small JPEG (poster frame for video), made by the sender
+}
 4 edit    { target: uint, text: string }  // target = seq in the same log
 5 delete  { target: uint }
 ```
@@ -95,10 +112,11 @@ connection. Messages, in order:
 
 | # | Message    | Encoding | Meaning |
 |---|------------|----------|---------|
-| 0 | `hello`    | `{ coreKey: fixed32, receivedLength: uint, readLength: uint }` | My log for our chat, how many of your events I have, how many I've read. Sent when the channel opens. |
+| 0 | `hello`    | `{ coreKey: fixed32, blobsKey: fixed32, receivedLength: uint, readLength: uint, blobsLength: uint }` | My chat log and blob log, how many of your events I have, how many I've read, how many blocks of your blob log I have. Sent when the channel opens. |
 | 1 | `typing`   | `bool`   | I started/stopped typing. Receivers treat it as off after 6 s. |
 | 2 | `received` | `uint`   | I now have your first N events (delivery ticks). |
 | 3 | `read`     | `uint`   | I've read your first N events. |
+| 4 | `blobs`    | `uint`   | I now have the first N blocks of your blob log (upload progress, at most every 250 ms). |
 
 Presence is the channel itself: open = online, closed = offline (last seen = when it closed).
 

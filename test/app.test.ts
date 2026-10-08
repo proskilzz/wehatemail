@@ -2,7 +2,7 @@ import test from 'brittle'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { SafeStorageSecretStore, type SafeStorageLike } from '../src/core/index.ts'
+import { SafeStorageSecretStore, keychainMessage, type SafeStorageLike } from '../src/core/index.ts'
 import { setup } from './helpers.ts'
 
 // A stand-in for Electron's safeStorage: "encrypts" by reversing the bytes.
@@ -47,4 +47,12 @@ test('engine state file is private (0600)', async t => {
   const { peer } = await setup(t)
   const { storage } = await peer('alice')
   t.is((await fs.stat(path.join(storage, 'state.json'))).mode & 0o777, 0o600)
+})
+
+test('the keychain error tells each OS what to do', t => {
+  t.ok(/click Allow/.test(keychainMessage('darwin')), 'macOS: click Allow on the prompt')
+  t.absent(/GNOME/.test(keychainMessage('darwin')))
+  t.ok(/GNOME Keyring or KWallet/.test(keychainMessage('linux')), 'Linux keeps the keyring advice')
+  t.absent(/click Allow/.test(keychainMessage('linux')))
+  t.ok(/keychain/.test(keychainMessage('win32')))
 })
