@@ -191,7 +191,43 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
    got ~13 MB/s, so the gap is the network path (UDX/hole-punched path), to be
    measured on real machines first.
 
-6. **M6: Privacy polish.** **Strip metadata from photos and videos by
+6. **M6: Fixes and speed from the first two-machine test** (Pro + Air, same Wi-Fi,
+   installed dmg). Fix the bugs, then **measure before optimising the speed**.
+   - **Verify does nothing visible.** `Engine.setVerified` saves but never emits
+     `contact`, so the UI only updates after a restart. Emit it. The header line
+     must switch to `verified ✓` and the button to "Verified ✓ (undo)" at once.
+   - **Inviter gets no sign that someone joined.** When a contact is added via
+     *my* invite: close the invite modal if it shows that invite, select the new
+     chat if none is open (otherwise badge the buddies button; new contacts count
+     as unread), add a SYS line "air joined using your invite", play the door sound
+     if sounds are on, and show an OS notification if the window isn't focused.
+   - **Receiver progress stuck at 0% then jumps to 100%.** Progress uses
+     `core.contiguousLength`, but `core.download({ start: 0, end: -1 })` fetches
+     blocks out of order, so the contiguous prefix stays small until the end.
+     Request attachment ranges with `linear: true`, and count progress from
+     blocks actually held in the attachment's range, not the contiguous prefix.
+     This also lets the streaming checksum keep up instead of running at the end.
+   - **Speed: measure first.** Observed: 1.6 GB in 3–4 min (~8 MB/s) Pro↔Air on
+     Wi-Fi, ~13 MB/s between two apps on one Mac, but `npm run bench` gives ~53 MB/s.
+     1. **Show the real path** in Info and on the transfer card: direct LAN
+        (`192.168.x.x`), direct internet (public IP), or relayed, from
+        `conn.rawStream.remoteHost`. Suspect: same-network peers connect via the
+        router's public IP (hairpin NAT) instead of LAN addresses.
+     2. `npm run bench -- --listen` / `--connect <key>`: the engine across two
+        real machines over the public DHT, with no UI. Plus `npm run linktest`: raw
+        bytes over one Hyperswarm connection (no Hypercore). This separates
+        network vs transport vs replication vs app.
+     3. Profile the app process during a 1 GB transfer: main-thread time in
+        sha256, encryption, IPC/progress events.
+     4. Put the numbers in the PR (table: same Mac, same Wi-Fi, Ethernet if
+        possible), then fix in this order: (a) LAN path when on the same network;
+        (b) start replicating while the sender is still copying (don't wait for
+        the full copy before posting the event); (c) more requests in flight /
+        replication tuning; (d) hashing off the main thread.
+     **Target: on the same network, at least 80% of what a plain TCP copy between
+     the two machines gets.** Report that baseline too.
+
+7. **M7: Privacy polish.** **Strip metadata from photos and videos by
    default.** Anything sent with Photos, Video or Album is cleaned before it's
    added to the blob log:
    - **Photos:** drop EXIF/XMP/IPTC (GPS, date, camera, serial, software) losslessly.
