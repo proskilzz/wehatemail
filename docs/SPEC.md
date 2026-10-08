@@ -158,7 +158,11 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
    Also fix from M2 testing: (a) replace the D/R marks with plain-word status
    (see THEME.md, "Message status in plain words"); (b) the keychain error is
    OS-specific: on macOS say to click Allow on the keychain prompt (Linux keeps
-   the GNOME Keyring/KWallet advice).
+   the GNOME Keyring/KWallet advice); (c) the unverified-contact line under
+   the name in the chat header is calm, not a warning: muted grey, no red/amber,
+   text `for extra security, compare codes · Info` where **Info** is a link that
+   opens the Info pane at the safety code. Verified stays `verified ✓`.
+   Keep it simple (KISS): one short line, one link, no icons or extra buttons.
 4. **M4: Links & install flow.** `wehatemail://` protocol on all 3 OSes, static
    join page in `site/` (for wehatemail.com) with OS detection and download buttons.
 5. **M5: Packaging & release.** electron-builder config, GitHub Actions matrix
