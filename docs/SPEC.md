@@ -226,6 +226,9 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
         replication tuning; (d) hashing off the main thread.
      **Target: on the same network, at least 80% of what a plain TCP copy between
      the two machines gets.** Report that baseline too.
+     **Measured baseline (2026-10-08, home Wi-Fi):** plain TCP Pro→Air
+     (`dd … | nc`) = **31.8 MB/s**. The app got ~8 MB/s (about 25%). **Target ≥ 25 MB/s**
+     Pro→Air on this Wi-Fi.
 
 7. **M7: Privacy polish.** **Strip metadata from photos and videos by
    default.** Anything sent with Photos, Video or Album is cleaned before it's
