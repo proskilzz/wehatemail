@@ -191,6 +191,20 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
    got ~13 MB/s, so the gap is the network path (UDX/hole-punched path), to be
    measured on real machines first.
 
+6. **M6: Privacy polish.** **Strip metadata from photos and videos by
+   default.** Anything sent with Photos, Video or Album is cleaned before it's
+   added to the blob log:
+   - **Photos:** drop EXIF/XMP/IPTC (GPS, date, camera, serial, software) losslessly.
+     Keep only orientation, or apply it. Don't re-compress.
+   - **Videos:** drop location and device metadata (e.g. QuickTime `udta`/`meta`,
+     ISO6709) by remuxing, never re-encoding.
+   - **Names:** rename to `photo-N.ext` / `video-N.ext`.
+
+   The send tray has one checkbox, "Send original (keeps location & camera
+   info)", unticked by default. The File button always sends files untouched,
+   and the tray says so in one line. Add the cleaning to "How this works".
+   Tests: a JPEG and a MOV with GPS come out with no GPS and identical pixels/frames.
+
 ## 9. Out of scope for v1
 
 Group chats, multiple devices, cloud backup, voice/video calls, Tor mode, mobile
