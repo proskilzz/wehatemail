@@ -27,6 +27,7 @@ export function Info ({ contact, focusSafety, onClose }: { contact: Contact | nu
           </div>
           <h3>Connection</h3>
           <div>{connection(contact)}</div>
+          {contact.presence.address && <div className='small'>Their address on this path: <span className='mono'>{contact.presence.address}</span>{contact.presence.path === 'internet' && ' (a public address; if you are both on the same Wi-Fi, tell us, it should say same network)'}</div>}
         </>
       )}
       <h3>Limitations</h3>

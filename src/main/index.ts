@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, protocol, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, protocol, safeStorage, shell } from 'electron'
 import { Engine, SafeStorageSecretStore, findInviteLink } from '../core/index.ts'
 import { SettingsFile } from './settings.ts'
 import type { InitState, SendFile, Settings } from '../shared/api.ts'
@@ -33,7 +33,13 @@ function send (channel: string, payload: unknown) {
 }
 
 function forward (e: Engine) {
-  e.on('contact', contact => send('whm:event', { type: 'contact', contact }))
+  e.on('contact', (contact, joined) => {
+    send('whm:event', { type: 'contact', contact, joined: joined === true })
+    // Someone used my invite while the window is in the background.
+    if (joined && win && !win.isFocused() && Notification.isSupported()) {
+      new Notification({ title: 'We Hate Mail', body: `${contact.name} joined using your invite` }).show()
+    }
+  })
   e.on('presence', id => send('whm:event', { type: 'presence', id }))
   e.on('message', (id, message) => send('whm:event', { type: 'message', id, message }))
   e.on('update', id => send('whm:event', { type: 'update', id }))

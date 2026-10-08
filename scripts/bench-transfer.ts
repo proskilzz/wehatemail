@@ -1,6 +1,7 @@
 // Measures where file-transfer time goes. Usage: npm run bench -- [megabytes]
 // Alice (this process) sends one file to Bob (a child process, so each has its own CPU)
 // over a local test DHT. Prints MB/s for the sender's copy into the blob log and end to end.
+// With --listen / --connect <code> it runs the engine across two real machines instead (scripts/bench-remote.ts).
 import { fork } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
@@ -9,6 +10,11 @@ import path from 'node:path'
 import DHT from 'hyperdht'
 import createTestnet from 'hyperdht/testnet.js'
 import { Engine, MemorySecretStore } from '../src/core/index.ts'
+
+if (process.argv.includes('--listen') || process.argv.includes('--connect')) {
+  await import('./bench-remote.ts')
+  await new Promise(() => {})
+}
 
 const wait = async (fn: () => boolean) => { while (!fn()) await new Promise(r => setTimeout(r, 20)) }
 

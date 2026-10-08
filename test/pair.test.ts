@@ -91,3 +91,23 @@ test('expired invite is refused locally', async t => {
   await new Promise(r => setTimeout(r, 10))
   await t.exception(() => bob.acceptInvite(invite.code), /expired/)
 })
+
+test('verifying a contact emits an update at once; the inviter is told who joined', async t => {
+  const { peer } = await setup(t)
+  const a = await peer('Alice')
+  const b = await peer('Bob')
+  const aliceSees = once(a.engine, 'contact')
+  const bobSees = once(b.engine, 'contact')
+  await b.engine.acceptInvite((await a.engine.createInvite()).code)
+  t.is((await aliceSees)[1], true, 'inviter side: joined through my invite')
+  t.is((await bobSees)[1], false, 'joiner side: not flagged')
+
+  const changed = once(a.engine, 'contact')
+  await a.engine.setVerified(b.engine.id, true)
+  const [contact, viaInvite] = await changed
+  t.is(contact.verified, true)
+  t.is(viaInvite, false)
+  const undone = once(a.engine, 'contact')
+  await a.engine.setVerified(b.engine.id, false)
+  t.is((await undone)[0].verified, false)
+})

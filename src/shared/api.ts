@@ -28,7 +28,7 @@ export interface InitState {
 }
 
 export type EngineEvent =
-  | { type: 'contact', contact: Contact }
+  | { type: 'contact', contact: Contact, joined: boolean }
   | { type: 'presence', id: string }
   | { type: 'message', id: string, message: Message }
   | { type: 'update', id: string }
