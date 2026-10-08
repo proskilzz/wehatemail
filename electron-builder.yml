@@ -1,0 +1,59 @@
+# Packaging config (SPEC §2). Run `npm run dist` locally, or let GitHub Actions do it.
+appId: com.wehatemail.app
+productName: We Hate Mail
+copyright: MIT
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# Native addons (sodium, udx, ...) cannot be loaded from inside the asar archive.
+asarUnpack:
+  - "**/*.node"
+# wehatemail:// links, registered by each installer (SPEC §4.2).
+protocols:
+  - name: We Hate Mail invite
+    schemes:
+      - wehatemail
+mac:
+  target:
+    - target: dmg
+      arch: universal
+  category: public.app-category.social-networking
+  # Prebuilt native files for both CPUs live side by side, so they are identical in both halves.
+  x64ArchFiles: "**/*.node"
+  # v1 ships unsigned (SPEC §2).
+  identity: null
+dmg:
+  artifactName: WeHateMail-${version}-mac-universal.${ext}
+win:
+  target:
+    - target: nsis
+      arch: x64
+  artifactName: WeHateMail-${version}-win-x64.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # Registers the wehatemail:// protocol (from `protocols` above) in the registry.
+linux:
+  target:
+    - target: AppImage
+      arch: x64
+    - target: deb
+      arch: x64
+  category: Network
+  maintainer: proskilzz <proskilzz@gmail.com>
+  # `protocols` above also adds MimeType=x-scheme-handler/wehatemail to the .desktop file.
+  artifactName: WeHateMail-${version}-linux-x64.${ext}
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0

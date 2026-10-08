@@ -104,10 +104,21 @@ Click **≡ buddies** (top left) to switch chats or invite someone. **ⓘ** open
 
 Invite links (`https://wehatemail.com/join#…`) open the app through the
 `wehatemail://` protocol. The app registers it when it starts, so run it once
-(`npm run dev`) before testing a link. In a packaged build (M5) the installer does this.
+(`npm run dev`) before testing a link. The installers (dmg, NSIS, deb) register it themselves.
 
 On Linux the app needs a keychain (GNOME Keyring or KWallet) to store your
 secrets. It refuses to start rather than store them unprotected.
+
+### Build installers
+
+Test builds (no release needed): on GitHub open **Actions → Build installers →
+Run workflow**, then download the `installer-*` files from the finished run.
+To build for your own OS: `npm run dist` (output in `release/`).
+
+Releases: see [docs/RELEASING.md](docs/RELEASING.md). Two-machine testing: [docs/TESTING.md](docs/TESTING.md).
+
+The installers are **not signed** yet. macOS: right-click the app, choose Open, then
+Open again. Windows SmartScreen: click More info, then Run anyway.
 
 ### Measure transfer speed
 
