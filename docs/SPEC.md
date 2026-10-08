@@ -155,6 +155,10 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
    `safeStorage` SecretStore, and engine state files written with mode 0600 (M1 review).
 3. **M3: Media & files.** Hyperblobs, albums, lightbox, video, file cards,
    progress, pause/resume states.
+   Also fix from M2 testing: (a) replace the D/R marks with plain-word status
+   (see THEME.md, "Message status in plain words"); (b) the keychain error is
+   OS-specific: on macOS say to click Allow on the keychain prompt (Linux keeps
+   the GNOME Keyring/KWallet advice).
 4. **M4: Links & install flow.** `wehatemail://` protocol on all 3 OSes, static
    join page in `site/` (for wehatemail.com) with OS detection and download buttons.
 5. **M5: Packaging & release.** electron-builder config, GitHub Actions matrix

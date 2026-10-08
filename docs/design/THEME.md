@@ -9,7 +9,7 @@ the desk, a terminal in the corner. **The source of truth is the mockup
 | From | We keep | We drop |
 |---|---|---|
 | **isle.chat** (terminal chat) | Near-black panes with thin 1px borders, monospace for chrome, the solid **green selection bar**, right-aligned unread counts, the purple `BOT`-style badge (ours: `SYS`), ASCII-art logo | Monospace for message text (hard to read in long chats), three always-visible panes |
-| **BlackBerry Messenger** | Contact header with a **status line** under the name, message groups with a small "name · time" header, **D / R** delivered/read marks, the bright blue blinking cursor | Glossy gradients, speech-bubble tails |
+| **BlackBerry Messenger** | Contact header with a **status line** under the name, message groups with a small "name · time" header, the idea of showing delivery state on every message (but in plain words, not BBM's cryptic D/R), the bright blue blinking cursor | Glossy gradients, speech-bubble tails |
 | **AIM** | **Blue name for me, red for them**, the **big compose box**, the **bottom button bar** of labelled icons with **Send** set apart on the right, "Buddy List" wording, a door sound when someone comes online | The formatting toolbar, Warn/Games, busy XP chrome |
 
 ## Layout
@@ -20,7 +20,7 @@ the desk, a terminal in the corner. **The source of truth is the mockup
 │  Sam            2   │  bob · 21:04                             │
 │  Mia     away…      │  you there?                              │
 │                     │                                          │
-│                     │  you · 21:05                        D R  │
+│                     │  you · 21:05                   seen 21:06│
 │                     │  yep! sending the trip pics              │
 │                     │  ┌────┬────┐                             │
 │                     │  │ 🖼 │ 🖼 │  album, 2×2 grid, "+N" tile │
@@ -57,7 +57,7 @@ the desk, a terminal in the corner. **The source of truth is the mockup
 | `--muted` | `#7a828e` | timestamps, hints |
 | `--me` | `#6ea8ff` | my name (AIM blue, lifted for dark) |
 | `--them` | `#ff7a7a` | their name (AIM red, softened) |
-| `--select` | `#9be39b` | selection bar, online dot, D/R marks (terminal green) |
+| `--select` | `#9be39b` | selection bar, online dot, "seen" status (terminal green) |
 | `--cursor` | `#3d8bff` | caret, focus ring (BBM blue) |
 | `--badge` | `#6b5cff` | `SYS` badge (isle.chat purple) |
 | `--warn` | `#f5b14a` | paused / relay / limitation notices |
@@ -73,8 +73,11 @@ the desk, a terminal in the corner. **The source of truth is the mockup
 ## Details that carry the nostalgia (keep them subtle)
 
 - The selected buddy is a solid green bar with dark text.
-- `D` and `R` marks: grey `D` when delivered, green `R` when read. Hovering
-  shows "Delivered 21:05 / Read 21:06".
+- **Message status in plain words**, small mono text at the right of the
+  "name · time" line, never single letters or symbols that need explaining:
+  `sending…` (muted) → `waiting for bob` (amber, while they're offline) →
+  `delivered` (muted) → `seen 21:06` (green) / `failed · retry` (red, clickable).
+  Hovering shows full times ("Delivered 21:05 · Seen 21:06").
 - A status line under your name and theirs (BBM / AIM away message), editable
   in the sidebar.
 - System lines (joined, verified, paused) use a `SYS` badge, isle.chat style.
