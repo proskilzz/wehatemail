@@ -16,7 +16,7 @@
     "test": "tsc --noEmit && node --import tsx test/all.ts",
     "bench": "tsx scripts/bench-transfer.ts",
     "typecheck": "tsc --noEmit",
-    "dist": "electron-vite build && electron-builder"
+    "dist": "electron-vite build && electron-builder --publish never"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
