@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Join on We Hate Mail</title>
+<style>
+  :root { --bg:#0b0d10; --pane:#101317; --raised:#171b21; --line:#2a3038; --text:#e4e7ec; --muted:#7a828e; --select:#9be39b; --cursor:#3d8bff; --warn:#f5b14a;
+    --mono: ui-monospace, "IBM Plex Mono", Menlo, Consolas, monospace; --sans: system-ui, "IBM Plex Sans", sans-serif; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 var(--sans); }
+  main { max-width:560px; margin:0 auto; padding:40px 20px; }
+  pre { font:12px/1.15 var(--mono); color:var(--select); margin:0 0 16px; }
+  h1 { font:600 18px var(--mono); margin:0 0 6px; }
+  p { margin:0 0 14px; } .muted { color:var(--muted); }
+  .card { background:var(--pane); border:1px solid var(--line); border-radius:6px; padding:16px 18px; margin:16px 0; }
+  .btn { display:inline-block; font:600 14px var(--mono); padding:10px 16px; border-radius:4px; border:1px solid var(--cursor); color:var(--cursor); background:none; text-decoration:none; cursor:pointer; margin:0 8px 8px 0; }
+  .btn:hover { background:var(--cursor); color:#0b0d10; }
+  .btn.quiet { border-color:var(--line); color:var(--text); }
+  .btn.quiet:hover { background:var(--raised); color:var(--text); }
+  .code { font:12px var(--mono); background:var(--raised); border:1px solid var(--line); border-radius:4px; padding:8px 10px; word-break:break-all; user-select:all; margin:8px 0; }
+  .warn { color:var(--warn); }
+  .sys { display:inline-block; background:#6b5cff; color:#fff; font:600 11px var(--mono); padding:1px 6px; border-radius:2px; margin-right:6px; }
+  [hidden] { display:none !important; }
+  a { color:var(--text); }
+</style>
+</head>
+<body>
+<main>
+<pre>__      ___   _ __  __
+\ \ /\ / / | | |  \/  |   We Hate Mail
+ \ V  V /| |_| | |\/| |   No mail. Just us.
+  \_/\_/  \___/|_|  |_|</pre>
+
+<section id="opening" hidden>
+  <h1>Opening We Hate Mail…</h1>
+  <p class="muted">Your browser may ask permission to open the app. Say yes.</p>
+</section>
+
+<section id="nocode" hidden>
+  <h1>This link has no invite in it</h1>
+  <p>Ask your friend to send the invite link again. It looks like <span class="code" style="display:inline">https://wehatemail.com/join#…</span></p>
+</section>
+
+<section id="install" hidden>
+  <h1 id="installTitle">Don't have the app yet?</h1>
+  <div class="card">
+    <p id="mobile" class="warn" hidden>We Hate Mail is a desktop app for now. Open this link on a Mac, Windows or Linux computer.</p>
+    <div id="buttons"></div>
+    <p id="how" class="muted"></p>
+    <p class="muted">The app is not signed yet, so your computer will warn you when you install it. That is expected for now.</p>
+  </div>
+  <div id="again" class="card" hidden>
+    <p><b>Already installed?</b></p>
+    <a class="btn" id="retry" href="#">Open the app again</a>
+    <p class="muted">Or copy this invite, open We Hate Mail, click <b>paste</b> and paste it in:</p>
+    <div class="code" id="codebox"></div>
+  </div>
+  <p class="muted"><span class="sys">SYS</span>Your invite stays in this page. It is never sent to any server.</p>
+</section>
+</main>
+<script type="module">
+  import { detectOS, inviteFromHash, appLink, DOWNLOADS, RELEASES } from './join.js'
+  const $ = id => document.getElementById(id)
+  const os = detectOS(navigator.userAgentData?.platform || navigator.platform, navigator.userAgent)
+  const code = inviteFromHash(location.hash)
+
+  const buttons = $('buttons')
+  const add = (text, href, quiet) => {
+    const a = document.createElement('a')
+    a.className = 'btn' + (quiet ? ' quiet' : '')
+    a.textContent = text
+    a.href = href
+    a.rel = 'noopener'
+    buttons.append(a)
+  }
+  if (os === 'mobile') $('mobile').hidden = false
+  else if (DOWNLOADS[os]) {
+    add(DOWNLOADS[os].label + ' (' + DOWNLOADS[os].file + ')', RELEASES)
+    $('how').textContent = DOWNLOADS[os].how
+    for (const k of Object.keys(DOWNLOADS)) if (k !== os) add(DOWNLOADS[k].label.replace('Download for ', '') , RELEASES, true)
+  } else {
+    for (const k of Object.keys(DOWNLOADS)) add(DOWNLOADS[k].label, RELEASES, k !== 'mac')
+  }
+
+  if (!code) {
+    $('nocode').hidden = false
+    $('install').hidden = false
+    $('installTitle').textContent = 'Get We Hate Mail'
+  } else {
+    $('opening').hidden = false
+    $('codebox').textContent = location.href
+    $('retry').href = appLink(code)
+    // Try the app. If this page is still in front a moment later, the app probably isn't installed.
+    location.href = appLink(code)
+    setTimeout(() => {
+      if (document.visibilityState === 'hidden') return
+      $('opening').hidden = true
+      $('install').hidden = false
+      $('again').hidden = false
+    }, 2500)
+  }
+</script>
+</body>
+</html>

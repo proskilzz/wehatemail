@@ -23,6 +23,7 @@ const api: WhmApi = {
   listInvites: () => call('listInvites'),
   acceptInvite: input => call('acceptInvite', input),
   copy: text => call('copy', text),
+  takeLink: () => call('takeLink'),
   onEvent: fn => {
     const handler = (_: unknown, e: EngineEvent) => fn(e)
     ipcRenderer.on('whm:event', handler)

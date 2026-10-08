@@ -5,6 +5,7 @@ import Hyperswarm from 'hyperswarm'
 import HyperDHT from 'hyperdht'
 import Corestore from 'corestore'
 import Hyperblobs from 'hyperblobs'
+import { DOWNLOAD_TYPE, isInlineType, servedType } from './media-type.ts'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import Protomux from 'protomux'
@@ -26,6 +27,10 @@ const SIGNALS_PROTOCOL = 'wehatemail/v1/signals'
 const PAIRING_GRACE = 30000
 const TRANSFER_TICK = 250
 const SPEED_WINDOW = 3000
+// Files are stored in the blob log one block per chunk read. 64 KB blocks capped the
+// sender copy at ~32 MB/s (per-block hashing and signing); 256 KB doubles it (npm run bench).
+const BLOB_CHUNK = 256 * 1024
+const VERIFY_BATCH = 16
 
 export interface EngineOptions {
   /** Folder for this device's data (logs and state). */
@@ -201,6 +206,8 @@ interface Conversation {
   theirBlobs: any | null
   items: Item[]
   verifying: boolean
+  /** Running checksum of the attachment being received, advanced as blocks arrive. */
+  hashing: { item: Item, at: number, hash: ReturnType<typeof createHash> } | null
   traffic: { at: number, bytes: number }[]
   tick: NodeJS.Timeout | null
   tickDirty: boolean
@@ -542,6 +549,7 @@ export class Engine extends EventEmitter {
       theirBlobs: null,
       items: [],
       verifying: false,
+      hashing: null,
       traffic: [],
       tick: null,
       tickDirty: false,
@@ -688,7 +696,7 @@ export class Engine extends EventEmitter {
     if (!st.isFile()) throw new Error('Not a file: ' + path.basename(file.path))
     const hash = createHash('sha256')
     const ws = conv.mineBlobs.createWriteStream()
-    const rs = createReadStream(file.path, { highWaterMark: 64 * 1024 })
+    const rs = createReadStream(file.path, { highWaterMark: BLOB_CHUNK })
     await new Promise<void>((resolve, reject) => {
       rs.on('data', chunk => hash.update(chunk as Buffer))
       rs.on('error', err => { ws.destroy(); reject(err) })
@@ -699,7 +707,7 @@ export class Engine extends EventEmitter {
     const id = ws.id
     const p = file.preview
     return {
-      kind: file.mime.startsWith('image/') ? AttachmentKind.IMAGE : file.mime.startsWith('video/') ? AttachmentKind.VIDEO : AttachmentKind.FILE,
+      kind: !isInlineType(file.mime) ? AttachmentKind.FILE : file.mime.startsWith('image/') ? AttachmentKind.IMAGE : AttachmentKind.VIDEO,
       name: (file.name ?? path.basename(file.path)).slice(0, 255),
       mime: file.mime.slice(0, 127),
       size: id.byteLength,
@@ -743,6 +751,7 @@ export class Engine extends EventEmitter {
     const { blockOffset, blockLength } = item.ref
     await conv.theirBlobs.core.clear(blockOffset, blockOffset + blockLength)
     delete conv.record.transfers[key]
+    conv.hashing = null
     await this.save()
     conv.theirBlobs.core.download({ start: blockOffset, end: blockOffset + blockLength })
     this.scheduleTransfer(conv)
@@ -753,6 +762,21 @@ export class Engine extends EventEmitter {
   attachmentInfo (contactId: string, messageId: string, index: number): { name: string, mime: string, size: number } {
     const { ref } = this.findItem(this.conv(contactId), messageId, index)
     return { name: ref.name, mime: ref.mime, size: ref.size }
+  }
+
+  /**
+   * How to serve a finished attachment: its declared type if that is an allowlisted
+   * image/video type and the first bytes agree, else a download-only generic type.
+   */
+  async attachmentServing (contactId: string, messageId: string, index: number): Promise<{ mime: string, inline: boolean }> {
+    const { mime, size } = this.attachmentInfo(contactId, messageId, index)
+    if (!isInlineType(mime) || size === 0) return { mime: DOWNLOAD_TYPE, inline: false }
+    let head = Buffer.alloc(0)
+    for await (const chunk of this.readAttachment(contactId, messageId, index, { start: 0, end: Math.min(size, 32) - 1 })) {
+      head = Buffer.concat([head, chunk])
+      if (head.length >= 32) break
+    }
+    return servedType(mime, head)
   }
 
   /** The bytes of a finished attachment, optionally a byte range (inclusive end), for playback. */
@@ -789,30 +813,38 @@ export class Engine extends EventEmitter {
     return item
   }
 
-  /** Check the checksum of every attachment that has fully arrived. One at a time. */
+  /**
+   * Check the checksum of incoming attachments, one at a time. Blocks are hashed
+   * as they arrive (not after the whole file is here), so the check is almost
+   * done when the last block lands.
+   */
   private verifyArrived (conv: Conversation) {
     const blobs = conv.theirBlobs
     if (!blobs || conv.verifying || this.closed) return
-    const contiguous = blobs.core.contiguousLength
-    const next = conv.items.find(i => !i.mine &&
-      !conv.record.transfers[i.messageId + '#' + i.index] &&
-      i.ref.blockOffset + i.ref.blockLength <= contiguous)
+    const next = conv.items.find(i => !i.mine && !conv.record.transfers[i.messageId + '#' + i.index])
     if (!next) return
+    const end = next.ref.blockOffset + next.ref.blockLength
+    if (conv.hashing?.item !== next) conv.hashing = { item: next, at: next.ref.blockOffset, hash: createHash('sha256') }
+    const state = conv.hashing
+    const limit = Math.min(blobs.core.contiguousLength, end)
+    if (state.at >= limit && state.at < end) return
     conv.verifying = true
     ;(async () => {
-      const hash = createHash('sha256')
       let ok = true
       try {
-        if (next.ref.byteLength > 0) {
-          const { blockOffset, blockLength, byteOffset, byteLength } = next.ref
-          for await (const chunk of blobs.createReadStream({ blockOffset, blockLength, byteOffset, byteLength }, { wait: false })) {
-            hash.update(chunk)
-          }
+        while (state.at < limit) {
+          // Read a few blocks at once (storage reads overlap), hash them in order.
+          const n = Math.min(VERIFY_BATCH, limit - state.at)
+          const blocks: Buffer[] = await Promise.all(Array.from({ length: n }, (_, i) => blobs.core.get(state.at + i, { wait: false })))
+          for (const block of blocks) state.hash.update(block)
+          state.at += n
         }
-        ok = b4a.equals(hash.digest(), next.ref.sha256)
       } catch {
         ok = false
       }
+      if (ok && state.at < end) return
+      if (ok) ok = b4a.equals(state.hash.digest(), next.ref.sha256)
+      conv.hashing = null
       conv.record.transfers[next.messageId + '#' + next.index] = ok ? 'done' : 'failed'
       await this.save()
     })().catch(() => {}).finally(() => {
@@ -1185,7 +1217,8 @@ function timeFor (list: [number, number][], seq: number): number | undefined {
 function toAttachment (a: AttachmentRef, index: number): Attachment {
   return {
     index,
-    kind: a.kind === AttachmentKind.IMAGE ? 'image' : a.kind === AttachmentKind.VIDEO ? 'video' : 'file',
+    // A sender can label anything as an image; only allowlisted types are shown as media.
+    kind: !isInlineType(a.mime) ? 'file' : a.kind === AttachmentKind.IMAGE ? 'image' : a.kind === AttachmentKind.VIDEO ? 'video' : 'file',
     name: a.name,
     mime: a.mime,
     size: a.size,

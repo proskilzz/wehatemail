@@ -70,7 +70,7 @@ Lessons taken from [Matrix](https://matrix.org) (see the spec). Inspired by [Kee
 - **M1:** core P2P engine (pairing, chat, offline queue), tested headless
 - **M2:** desktop app and chat UI (dark theme)
 - **M3:** pictures, albums, videos, files, with pause/resume (done: Photos, Video, File and Album buttons, or drop files on the window; Alt+P/V/F/A)
-- **M4:** invite links, QR codes and the wehatemail.com join page
+- **M4:** `wehatemail://` links, the wehatemail.com join page (`site/`), one-on-one AIM-style layout, faster transfers, safer media handling
 - **M5:** installers for macOS, Windows and Linux via GitHub Actions
 - **Later:** multiple devices, backup, group spaces, Tor mode, mobile
 
@@ -99,8 +99,24 @@ On first launch it asks for your name and shows what the app does and doesn't
 protect. Click **+ invite** to get a link and QR code, or **paste** to join
 someone else's invite.
 
+Click **≡ buddies** (top left) to switch chats or invite someone. **ⓘ** opens Info
+(safety code, connection). Esc, the **×** or a click outside closes either panel.
+
+Invite links (`https://wehatemail.com/join#…`) open the app through the
+`wehatemail://` protocol. The app registers it when it starts, so run it once
+(`npm run dev`) before testing a link. In a packaged build (M5) the installer does this.
+
 On Linux the app needs a keychain (GNOME Keyring or KWallet) to store your
 secrets. It refuses to start rather than store them unprotected.
+
+### Measure transfer speed
+
+```sh
+npm run bench -- 500
+```
+
+Sends a 500 MB file between two local copies of the engine and prints MB/s for the
+copy into the blob log and end to end. Paste the output in a bug report if transfers feel slow.
 
 ### Try it on two computers
 

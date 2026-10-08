@@ -126,7 +126,7 @@ export function Chat ({ contact, messages, transfers, typing, myName, info, onIn
 
   if (!contact) {
     return (
-      <main className='chat pane' style={{ display: 'grid', border: '1px solid var(--line)', background: 'var(--pane)' }}>
+      <main className='pane emptymain'>
         <div className='emptyp'>
           <div>
             <pre className='ascii'>{LOGO}</pre>
@@ -203,7 +203,7 @@ export function Chat ({ contact, messages, transfers, typing, myName, info, onIn
   const online = contact.presence.status === 'online'
   const viewed = viewing ? messages.find(m => m.id === viewing.messageId) : undefined
   return (
-    <main className='chat pane'>
+    <>
       <header className='pane head'>
         <div>
           <div className='name'>{contact.name}</div>
@@ -270,7 +270,9 @@ export function Chat ({ contact, messages, transfers, typing, myName, info, onIn
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() }
           }}
         />
-        <div className='tools'>
+      </div>
+
+      <div className='pane tools'>
           {TOOLS.map(t => (
             <button key={t.key} className='tool' onClick={() => inputs.current[t.key]?.click()} title={`${t.key}${t.label} (Alt+${t.key})`}>
               <svg viewBox='0 0 24 24'>{t.path}</svg><span><u>{t.key}</u>{t.label}</span>
@@ -288,7 +290,6 @@ export function Chat ({ contact, messages, transfers, typing, myName, info, onIn
           <div className='sp' />
           <span className='hint'>or drop files anywhere</span>
           <button className='tool send' onClick={send} disabled={!text.trim() && !staged.length}>Send <svg viewBox='0 0 24 24'><path d='M4 12h15M13 6l6 6-6 6' /></svg></button>
-        </div>
       </div>
 
       {dragging && <div className='dropveil'><div>drop files to send to {contact.name}</div></div>}
@@ -305,6 +306,6 @@ export function Chat ({ contact, messages, transfers, typing, myName, info, onIn
           onSave={save}
         />
       )}
-    </main>
+    </>
   )
 }

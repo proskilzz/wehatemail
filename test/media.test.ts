@@ -139,3 +139,27 @@ test('attachments are encrypted at rest', async t => {
   }
   t.pass('no plaintext on disk')
 })
+
+test('attachments are only served inline when the declared type is allowed and the bytes agree', async t => {
+  const { alice, bob } = await pairUp(t)
+  const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), crypto.randomBytes(500)])
+  const fake = Buffer.from('<html><script>alert(1)</script></html>')
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+  await alice.sendFiles(bob.id, [
+    { path: await tmpFile(t, 'real.png', png), mime: 'image/png' },
+    { path: await tmpFile(t, 'fake.png', fake), mime: 'image/png' },
+    { path: await tmpFile(t, 'evil.svg', svg), mime: 'image/svg+xml' },
+    { path: await tmpFile(t, 'page.html', fake), mime: 'text/html' }
+  ])
+  await waitFor(() => bob.transfers(alice.id).length === 4 && bob.transfers(alice.id).every(x => x.state === 'done'))
+  const [album, svgMsg, htmlMsg] = await bob.messages(alice.id)
+  t.alike(album.attachments.map((a: any) => a.kind), ['image', 'image'], 'only the two png labels count as pictures')
+  t.is(svgMsg.attachments[0].kind, 'file', 'svg is a plain file, not a picture')
+  t.is(htmlMsg.attachments[0].kind, 'file')
+  const download = { mime: 'application/octet-stream', inline: false }
+  t.alike(await bob.attachmentServing(alice.id, album.id, 0), { mime: 'image/png', inline: true })
+  t.alike(await bob.attachmentServing(alice.id, album.id, 1), download, 'html bytes labelled png')
+  t.alike(await bob.attachmentServing(alice.id, svgMsg.id, 0), download)
+  t.alike(await bob.attachmentServing(alice.id, htmlMsg.id, 0), download)
+  t.alike(await alice.attachmentServing(bob.id, album.id, 0), { mime: 'image/png', inline: true }, 'sender side too')
+})

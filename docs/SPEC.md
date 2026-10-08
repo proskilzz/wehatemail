@@ -180,7 +180,9 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
 
 5. **M5: Packaging & release.** electron-builder config, GitHub Actions matrix
    (macos, windows, ubuntu) building dmg/exe/AppImage/deb on `v*` tags, and a
-   release checklist.
+   release checklist. Register the `wehatemail://` protocol in the installers
+   (macOS Info.plist, Windows registry via NSIS, Linux `.desktop` MimeType); M4 only
+   registers it at runtime via `setAsDefaultProtocolClient`.
 
 ## 9. Out of scope for v1
 

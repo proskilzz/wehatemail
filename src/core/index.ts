@@ -3,5 +3,6 @@ export type { EngineOptions, Contact, Message, MessageStatus, Invite, Presence, 
 export { MemorySecretStore, FileSecretStore, SafeStorageSecretStore, keychainMessage } from './secrets.ts'
 export type { SecretStore, SafeStorageLike } from './secrets.ts'
 export { dmTopic, safetyCode } from './keys.ts'
-export { parseInvite, inviteLinks, JOIN_URL, APP_URL } from './invite-link.ts'
+export { parseInvite, inviteLinks, findInviteLink, JOIN_URL, APP_URL } from './invite-link.ts'
 export { PROTOCOL_VERSION, EventType } from './encoding.ts'
+export { INLINE_TYPES, isInlineType, sniffType, servedType, DOWNLOAD_TYPE } from './media-type.ts'

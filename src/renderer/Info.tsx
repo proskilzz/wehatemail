@@ -3,12 +3,16 @@ import type { Contact } from '../shared/api.ts'
 import { LOGO, Limits } from './content.tsx'
 import { connection } from './format.ts'
 
-export function Info ({ contact, focusSafety }: { contact: Contact | null, focusSafety: number }) {
+export function Info ({ contact, focusSafety, onClose }: { contact: Contact | null, focusSafety: number, onClose: () => void }) {
   const safety = useRef<HTMLDivElement>(null)
   // The "Info" link in the chat header lands here.
   useEffect(() => { if (focusSafety) safety.current?.scrollIntoView({ block: 'start' }) }, [focusSafety])
   return (
     <aside className='pane infop'>
+      <div className='top'>
+        <div className='title'>Info{contact ? ' · ' + contact.name : ''}</div>
+        <button className='x' onClick={onClose} title='Close (Esc)' aria-label='Close info'>×</button>
+      </div>
       <pre className='ascii'>{LOGO}</pre>
       {contact && (
         <>
