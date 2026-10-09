@@ -112,6 +112,8 @@ export function HowModal ({ settings, onSettings, onClose }: { settings: Setting
       <h2>how this works</h2>
       <div className='small' style={{ marginBottom: 10 }}>What We Hate Mail does and doesn't protect.</div>
       <Limits />
+      <h3>Privacy</h3>
+      <p className='small'>Photos and videos you send with Photos, Video or Album have their location, camera and date info removed first, without re-compressing them. They are renamed photo-1, video-1 and so on. Tick “Send original” to keep that info. Files sent with File are never changed.</p>
       <h3>Settings</h3>
       <label className='check'>
         <input type='checkbox' checked={settings.sounds} onChange={e => onSettings({ sounds: e.target.checked })} />

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import Hyperswarm from 'hyperswarm'
 import HyperDHT from 'hyperdht'
@@ -18,6 +19,7 @@ import {
   PROTOCOL_VERSION, EventType, AttachmentKind, chatEvent, peerInfo, hello, encode, decode, c,
   type ChatEvent, type PeerInfo, type Hello, type AttachmentRef
 } from './encoding.ts'
+import { canStrip, stripMetadata } from './strip-metadata.ts'
 import { dmTopic, safetyCode } from './keys.ts'
 import { inviteToCode, inviteLinks, parseInvite } from './invite-link.ts'
 
@@ -53,6 +55,10 @@ export interface EngineOptions {
   inviteTtl?: number
   /** Block requests kept in flight while downloading attachments, `[min, max]`. Hypercore's default is [16, 512]. */
   inflightRange?: [number, number]
+  /** How long a connection may sit idle while file data is due before it is redialled, in ms. Default 6000. Lower in tests. */
+  stallMs?: number
+  /** Test hook: runs before each file starts copying into the blob log (simulates slow hashing/planning). */
+  beforeCopy?: () => Promise<void>
 }
 
 export type PresenceStatus = 'online' | 'offline'
@@ -113,6 +119,11 @@ export interface OutgoingFile {
   name?: string
   mime: string
   preview?: Preview
+  /**
+   * Strip location, camera and date metadata first (pictures and videos only) and rename to
+   * `photo-N.ext` / `video-N.ext`. Leave unset to send the file exactly as it is.
+   */
+  clean?: boolean
 }
 
 /**
@@ -132,6 +143,13 @@ export interface Transfer {
   total: number
   /** Bytes per second right now. 0 when idle. */
   speed: number
+  /** When the first bytes of this attachment moved (ms since epoch), 0 if none yet. */
+  startedAt: number
+  /** When it finished, 0 while unfinished (and after a restart, for received files). */
+  finishedAt: number
+  /** Time spent idle while bytes were due, and how many times the connection was redialled. */
+  stalledMs: number
+  reconnects: number
   /** The network path the bytes take right now. */
   path: ConnectionPath | null
 }
@@ -210,6 +228,8 @@ interface Item {
   ref: AttachmentRef
   /** Blocks of this attachment that are in my copy of their blob log (incoming only). */
   held: number
+  /** Timings for the transfer card and logs. */
+  stats: { startedAt: number, finishedAt: number, stalledMs: number, reconnects: number }
   /** One flag per block of the range: already counted in `held`. */
   seen: Uint8Array
   /** Outgoing only: the copy into my blob log failed or was cut short, so the blocks are missing. */
@@ -677,6 +697,7 @@ export class Engine extends EventEmitter {
       const at = index - item.ref.blockOffset
       if (at < 0 || at >= item.ref.blockLength) continue
       if (!item.seen[at]) { item.seen[at] = 1; item.held++ }
+      item.stats.startedAt ||= Date.now()
       return
     }
   }
@@ -693,7 +714,7 @@ export class Engine extends EventEmitter {
     if (event.type !== EventType.MEDIA && event.type !== EventType.FILE) return
     const messageId = (mine ? this.id : conv.record.publicKey) + ':' + seq
     ;(event as any).items.forEach((ref: AttachmentRef, index: number) => {
-      const item: Item = { mine, messageId, index, ref, held: 0, seen: new Uint8Array(mine ? 0 : ref.blockLength), broken: false, range: null }
+      const item: Item = { mine, messageId, index, ref, held: 0, stats: { startedAt: mine ? Date.now() : 0, finishedAt: 0, stalledMs: 0, reconnects: 0 }, seen: new Uint8Array(mine ? 0 : ref.blockLength), broken: false, range: null }
       conv.items.push(item)
       if (!mine) this.requestItem(conv, item)
     })
@@ -755,8 +776,11 @@ export class Engine extends EventEmitter {
     const result = new Promise<Message[]>((resolve, reject) => { posted = resolve; failed = reject })
     const run = async () => {
       let copies: (() => Promise<void>)[]
+      let tmp: string | null = null
       try {
-        const plan = await this.planFiles(conv, files)
+        const prepared = await this.cleanFiles(conv, files)
+        tmp = prepared.dir
+        const plan = await this.planFiles(conv, prepared.files)
         copies = plan.copies
         const media = plan.refs.filter(r => r.kind !== AttachmentKind.FILE)
         const others = plan.refs.filter(r => r.kind === AttachmentKind.FILE)
@@ -776,22 +800,58 @@ export class Engine extends EventEmitter {
         this.scheduleTransfer(conv)
         posted(out)
       } catch (err) {
+        if (tmp) await fs.rm(tmp, { recursive: true, force: true }).catch(() => {})
         failed(err)
         return
       }
       // Copy the bytes in, one file after another, in the order the block numbers were planned.
-      for (const [i, copy] of copies.entries()) {
-        try {
-          await copy()
-        } catch (err: any) {
-          this.markBroken(conv, copies.length - i)
-          this.emit('warning', conv.record.publicKey, 'Could not copy a file to send: ' + String(err?.message ?? err))
-          return
+      try {
+        for (const [i, copy] of copies.entries()) {
+          try {
+            await this.opts.beforeCopy?.()
+            await copy()
+          } catch (err: any) {
+            this.markBroken(conv, copies.length - i)
+            this.emit('warning', conv.record.publicKey, 'Could not copy a file to send: ' + String(err?.message ?? err))
+            return
+          }
         }
+      } finally {
+        if (tmp) await fs.rm(tmp, { recursive: true, force: true }).catch(() => {})
       }
     }
     conv.sends = conv.sends.then(run, run)
     return result
+  }
+
+  /**
+   * Make cleaned copies (no location or camera metadata) of the files marked `clean`, in a private
+   * temp folder the caller deletes. Types we can't clean are sent as they are, with a warning.
+   */
+  private async cleanFiles (conv: Conversation, files: OutgoingFile[]): Promise<{ files: OutgoingFile[], dir: string | null }> {
+    if (!files.some(f => f.clean)) return { files, dir: null }
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'whm-clean-'))
+    const counts = { photo: 0, video: 0 }
+    const out: OutgoingFile[] = []
+    try {
+      for (const [i, file] of files.entries()) {
+        const video = file.mime.toLowerCase().startsWith('video/')
+        if (!file.clean || !(video || file.mime.toLowerCase().startsWith('image/'))) { out.push(file); continue }
+        const kind = video ? 'video' : 'photo'
+        const dest = path.join(dir, String(i))
+        if (!canStrip(file.mime) || !await stripMetadata(file.path, dest, file.mime)) {
+          this.emit('warning', conv.record.publicKey, `Could not remove metadata from ${(file.name ?? path.basename(file.path)).slice(0, 80)}; sent as it is`)
+          out.push(file)
+          continue
+        }
+        const ext = path.extname(file.name ?? file.path).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 8)
+        out.push({ ...file, path: dest, name: `${kind}-${++counts[kind]}${ext}` })
+      }
+    } catch (err) {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+      throw err
+    }
+    return { files: out, dir }
   }
 
   /** Mark the newest `n` outgoing attachments that aren't fully in the blob log as broken. */
@@ -884,7 +944,8 @@ export class Engine extends EventEmitter {
     return conv.items.map(item => {
       const { ref } = item
       const total = ref.size
-      const base = { messageId: item.messageId, index: item.index, direction: item.mine ? 'out' as const : 'in' as const, total }
+      const { startedAt, finishedAt, stalledMs, reconnects } = item.stats
+      const base = { messageId: item.messageId, index: item.index, direction: item.mine ? 'out' as const : 'in' as const, total, startedAt, finishedAt, stalledMs, reconnects }
       const final = item.mine ? null : conv.record.transfers[item.messageId + '#' + item.index]
       if (final) return { ...base, state: final, done: final === 'done' ? total : 0, speed: 0, path: null }
       // Incoming: blocks actually held in this attachment's range, not the contiguous prefix of the log.
@@ -1004,6 +1065,7 @@ export class Engine extends EventEmitter {
       if (ok) ok = b4a.equals(state.hash.digest(), next.ref.sha256)
       conv.hashing = null
       conv.record.transfers[next.messageId + '#' + next.index] = ok ? 'done' : 'failed'
+      if (ok) next.stats.finishedAt = Date.now()
       await this.save()
     })().catch(() => {}).finally(() => {
       conv.verifying = false
@@ -1036,8 +1098,13 @@ export class Engine extends EventEmitter {
   private wantsBytes (conv: Conversation): boolean {
     if (conv.conn === null) return false
     if (conv.record.blobsDelivered < conv.mineBlobs.core.length) return true
+    // Only count idle time when the peer has blocks we are missing. While the sender is still
+    // hashing or copying, its log is shorter than the range we asked for and nothing is due.
+    const peers: any[] = conv.theirBlobs?.core.peers ?? []
+    const remote = peers.reduce((n, peer) => Math.max(n, peer.remoteLength ?? 0), 0)
     return conv.items.some(item => !item.mine && item.held < item.ref.blockLength &&
-      conv.record.transfers[item.messageId + '#' + item.index] !== 'done' && !!item.range)
+      conv.record.transfers[item.messageId + '#' + item.index] !== 'done' && !!item.range &&
+      Math.min(remote, item.ref.blockOffset + item.ref.blockLength) - item.ref.blockOffset > item.held)
   }
 
   /**
@@ -1051,10 +1118,16 @@ export class Engine extends EventEmitter {
       if (!conv.conn || !this.wantsBytes(conv)) { conv.wantingSince = 0; continue }
       if (!conv.wantingSince) conv.wantingSince = now
       const quietFor = now - Math.max(conv.lastBytes, conv.wantingSince)
-      const limit = now - this.networkChangedAt < 30000 ? STALL_AFTER_NETWORK_CHANGE_MS : STALL_MS
+      const stallMs = this.opts.stallMs ?? STALL_MS
+      const limit = now - this.networkChangedAt < 30000 ? Math.min(STALL_AFTER_NETWORK_CHANGE_MS, stallMs) : stallMs
       if (quietFor < limit) continue
       conv.wantingSince = now
       conv.lastBytes = now
+      for (const item of conv.items) {
+        if (item.stats.finishedAt || !item.stats.startedAt) continue
+        const open = item.mine ? conv.record.blobsDelivered < item.ref.blockOffset + item.ref.blockLength : item.held < item.ref.blockLength
+        if (open) { item.stats.stalledMs += quietFor; item.stats.reconnects++ }
+      }
       this.emit('warning', conv.record.publicKey, 'Transfer stalled; reconnecting')
       conv.conn.destroy()
     }
@@ -1301,6 +1374,9 @@ export class Engine extends EventEmitter {
     n = Math.min(n, conv.mineBlobs.core.length)
     if (n <= conv.record.blobsDelivered) return
     conv.record.blobsDelivered = n
+    for (const item of conv.items) {
+      if (item.mine && !item.stats.finishedAt && n >= item.ref.blockOffset + item.ref.blockLength) item.stats.finishedAt = Date.now()
+    }
     this.save().catch(() => {})
     this.scheduleTransfer(conv)
   }

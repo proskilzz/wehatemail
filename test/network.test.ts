@@ -52,3 +52,33 @@ test('transfer resumes when the old connection is still half-open', async t => {
     for (const e of [alice, bob]) e.swarm.dht.emit('network-change')
   })
 })
+
+test('no false stall while the sender is still hashing/copying before any block exists', async t => {
+  const { peer } = await setup(t)
+  const a = await peer('Alice', { engineOpts: { stallMs: 400, beforeCopy: () => new Promise(r => setTimeout(r, 2000)) } })
+  const b = await peer('Bob', { engineOpts: { stallMs: 400 } })
+  const alice = a.engine
+  const bob = b.engine
+  await bob.acceptInvite((await alice.createInvite()).code)
+  await waitFor(() => alice.contact(bob.id).presence.status === 'online' &&
+    bob.contact(alice.id).presence.status === 'online')
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'whm-stall-'))
+  t.teardown(() => fs.rm(dir, { recursive: true, force: true }))
+  const data = crypto.randomBytes(1_000_000)
+  const file = path.join(dir, 'slow.bin')
+  await fs.writeFile(file, data)
+
+  const warnings: string[] = []
+  for (const e of [alice, bob]) e.on('warning', (_id: string, text: string) => warnings.push(text))
+  const connBefore = (bob as any).conv(alice.id).conn
+  await alice.sendFiles(bob.id, [{ path: file, mime: 'application/octet-stream' }])
+  await waitFor(() => bob.transfers(alice.id)[0]?.state === 'done', 30000)
+
+  t.absent(warnings.some(w => /stalled/i.test(w)), 'no stall warning while nothing was due')
+  t.is((bob as any).conv(alice.id).conn, connBefore, 'the connection was not dropped')
+  const [tr] = bob.transfers(alice.id)
+  t.is(tr.reconnects, 0)
+  t.ok(tr.startedAt > 0 && tr.finishedAt >= tr.startedAt, 'start and finish times are recorded')
+  await waitFor(() => alice.transfers(bob.id)[0]?.finishedAt > 0)
+})

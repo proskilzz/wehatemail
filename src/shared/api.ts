@@ -8,6 +8,8 @@ export interface SendFile {
   name: string
   mime: string
   preview?: Preview
+  /** Strip location and camera metadata first (Photos, Video and Album sends unless "Send original" is ticked). */
+  clean?: boolean
 }
 
 /** App-level settings that live outside the engine. */

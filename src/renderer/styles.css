@@ -182,6 +182,9 @@ button { font-family:inherit; }
 .chip { display:inline-flex; gap:8px; align-items:center; font:12px var(--mono); border:1px solid var(--line); border-radius:4px; padding:2px 6px; max-width:260px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .chip button { background:none; border:0; color:var(--muted); cursor:pointer; font-size:14px; padding:0; }
 .chip button:hover { color:var(--text); }
+.originalbox { flex-basis:100%; font:12px var(--mono); }
+.trayhint { flex-basis:100%; font:12px var(--mono); color:var(--muted); }
+.trayhint:empty { display:none; }
 .tray .warnbox { flex-basis:100%; margin:4px 0 8px; }
 .dropveil { position:fixed; inset:8px; display:grid; place-items:center; background:rgba(11,13,16,.85); border:1px dashed var(--select); border-radius:6px; font:600 15px var(--mono); color:var(--select); z-index:5; pointer-events:none; }
 
