@@ -23,7 +23,8 @@ function Status ({ m, name }: { m: Message, name: string }) {
   return <span className='st' title={`Delivered ${full(m.deliveredAt)}`}>delivered</span>
 }
 
-interface Staged { id: number, file: File }
+/** `media`: came from Photos / Video / Album (or a dropped picture or video), so it is cleaned unless "Send original" is ticked. */
+interface Staged { id: number, file: File, media: boolean }
 
 /** A send in progress (copying big files takes a while) or one that went wrong. */
 interface Pending { id: number, label: string, failed?: string, run: () => Promise<unknown> }
@@ -45,6 +46,7 @@ export function Chat ({ contact, messages, transfers, typing, myName, notes, inf
 }) {
   const [text, setText] = useState('')
   const [staged, setStaged] = useState<Staged[]>([])
+  const [original, setOriginal] = useState(false)
   const [pending, setPending] = useState<Pending[]>([])
   const [dragging, setDragging] = useState(false)
   const [viewing, setViewing] = useState<{ messageId: string, index: number } | null>(null)
@@ -58,7 +60,7 @@ export function Chat ({ contact, messages, transfers, typing, myName, notes, inf
 
   const map: TransferMap = new Map(transfers.map(t => [transferKey(t.messageId, t.index), t]))
 
-  useEffect(() => { setText(''); setStaged([]); setPending([]); setViewing(null); area.current?.focus() }, [id])
+  useEffect(() => { setText(''); setStaged([]); setOriginal(false); setPending([]); setViewing(null); area.current?.focus() }, [id])
 
   useEffect(() => {
     const set = () => setSelfOffline(!navigator.onLine)
@@ -80,8 +82,8 @@ export function Chat ({ contact, messages, transfers, typing, myName, notes, inf
     if (el) el.scrollTop = el.scrollHeight
   }, [messages.length, pending.length, id, typing])
 
-  const stage = useCallback((files: File[]) => {
-    if (files.length) setStaged(s => [...s, ...files.map(file => ({ id: nextId++, file }))])
+  const stage = useCallback((files: File[], media?: boolean) => {
+    if (files.length) setStaged(s => [...s, ...files.map(file => ({ id: nextId++, file, media: media ?? /^(image|video)\//.test(file.type) }))])
     area.current?.focus()
   }, [])
 
@@ -170,12 +172,14 @@ export function Chat ({ contact, messages, transfers, typing, myName, notes, inf
       return
     }
     const batch = staged
+    const keep = original
     setStaged([])
+    setOriginal(false)
     const label = batch.length === 1 ? batch[0].file.name : `${batch.length} files`
     run(label, async () => {
       const files = []
-      for (const { file } of batch) {
-        files.push({ path: window.whm.pathFor(file), name: file.name, mime: file.type || 'application/octet-stream', preview: await makePreview(file) })
+      for (const { file, media } of batch) {
+        files.push({ path: window.whm.pathFor(file), name: file.name, mime: file.type || 'application/octet-stream', preview: await makePreview(file), clean: media && !keep })
       }
       await window.whm.sendFiles(contact.id, files, t)
     })
@@ -260,6 +264,16 @@ export function Chat ({ contact, messages, transfers, typing, myName, notes, inf
                 <button onClick={() => setStaged(list => list.filter(x => x.id !== s.id))} aria-label={`remove ${s.file.name}`}>×</button>
               </span>
             ))}
+            {staged.some(s => s.media) && (
+              <label className='check originalbox'>
+                <input type='checkbox' checked={original} onChange={e => setOriginal(e.target.checked)} />
+                Send original (keeps location &amp; camera info)
+              </label>
+            )}
+            <div className='trayhint'>
+              {staged.some(s => s.media) && !original ? 'Location and camera info are removed from photos and videos. ' : ''}
+              {staged.some(s => !s.media) ? 'Files sent with File are sent untouched.' : ''}
+            </div>
             {total > TWO_GB && <div className='warnbox'>Over 2 GB: both of you need to stay online until this finishes.</div>}
           </div>
         )}
@@ -285,7 +299,7 @@ export function Chat ({ contact, messages, transfers, typing, myName, notes, inf
                 multiple={t.multiple}
                 accept={t.accept || undefined}
                 onClick={e => e.stopPropagation()}
-                onChange={e => { stage([...(e.target.files ?? [])]); e.target.value = '' }}
+                onChange={e => { stage([...(e.target.files ?? [])], t.key !== 'F'); e.target.value = '' }}
               />
             </button>
           ))}

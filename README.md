@@ -56,6 +56,10 @@ Lessons taken from [Matrix](https://matrix.org) (see the spec). Inspired by [Kee
 **Protected**
 - Message and file **contents**: only you and the other person can read them
 - No central server stores your data
+- Photos and videos sent with Photos / Video / Album have location, camera and date
+  metadata removed (JPEG, PNG, WebP, MP4, MOV), without re-encoding. Tick
+  "Send original" to keep it. Files sent with File are never changed. Other
+  picture types (GIF, AVIF, BMP) and WebM/Ogg are sent as they are, with a warning.
 
 **Not (yet) protected**
 - **Your IP address is visible to the other person.** A direct connection means

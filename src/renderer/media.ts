@@ -22,7 +22,14 @@ export const TWO_GB = 2 * 1000 ** 3
 /** Plain-word state of an attachment, as in SPEC §4.5. */
 export function transferText (t: Transfer | undefined, name: string, selfOffline: boolean): { text: string, tone: '' | 'warn' | 'bad' | 'ok' } {
   if (!t) return { text: '', tone: '' }
-  if (t.state === 'done') return { text: 'Done', tone: 'ok' }
+  if (t.state === 'done') {
+    // e.g. "Done · 300 MB in 1:58 · avg 2.5 MB/s" (only when this session saw the whole transfer)
+    const secs = t.finishedAt > t.startedAt && t.startedAt > 0 ? (t.finishedAt - t.startedAt) / 1000 : 0
+    if (secs < 1) return { text: 'Done', tone: 'ok' }
+    const took = fmtDuration(secs * 1000)
+    const stall = t.stalledMs >= 1000 ? ` · stalled ${Math.round(t.stalledMs / 1000)}s${t.reconnects ? ` (${t.reconnects}× reconnect)` : ''}` : ''
+    return { text: `Done · ${fmtBytes(t.total)} in ${took} · avg ${fmtBytes(t.total / secs)}/s${stall}`, tone: 'ok' }
+  }
   if (t.state === 'failed') return { text: 'Failed', tone: 'bad' }
   const pct = t.total ? Math.min(99, Math.floor(100 * t.done / t.total)) + '%' : ''
   if (selfOffline) return { text: `Paused: you're offline · ${pct}`, tone: 'warn' }

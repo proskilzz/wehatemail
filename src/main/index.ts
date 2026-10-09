@@ -120,7 +120,7 @@ function cleanFiles (files: unknown): (SendFile)[] {
   if (!Array.isArray(files)) throw new Error('Bad request')
   return files.map((f: any) => {
     if (typeof f?.path !== 'string' || !path.isAbsolute(f.path) || typeof f.mime !== 'string') throw new Error('Bad request')
-    return { path: f.path, name: typeof f.name === 'string' ? f.name : path.basename(f.path), mime: f.mime, preview: f.preview }
+    return { path: f.path, name: typeof f.name === 'string' ? f.name : path.basename(f.path), mime: f.mime, preview: f.preview, clean: f.clean === true }
   })
 }
 

@@ -2,21 +2,21 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import createTestnet from 'hyperdht/testnet.js'
-import { Engine, MemorySecretStore, type SecretStore } from '../src/core/index.ts'
+import { Engine, MemorySecretStore, type EngineOptions, type SecretStore } from '../src/core/index.ts'
 
 export async function setup (t: any) {
   const testnet = await createTestnet(3, { teardown: t.teardown })
   const dirs: string[] = []
   const engines: Engine[] = []
 
-  async function peer (name: string, opts: { storage?: string, secrets?: SecretStore } = {}) {
+  async function peer (name: string, opts: { storage?: string, secrets?: SecretStore, engineOpts?: Partial<EngineOptions> } = {}) {
     let storage = opts.storage
     if (!storage) {
       storage = await fs.mkdtemp(path.join(os.tmpdir(), 'whm-test-'))
       dirs.push(storage)
     }
     const secrets = opts.secrets ?? new MemorySecretStore()
-    const engine = new Engine({ storage, secrets, dht: testnet.createNode(), pairingPoll: 500 })
+    const engine = new Engine({ storage, secrets, dht: testnet.createNode(), pairingPoll: 500, ...opts.engineOpts })
     engines.push(engine)
     await engine.ready()
     await engine.setName(name)
