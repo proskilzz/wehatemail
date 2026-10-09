@@ -39,6 +39,14 @@ await wait(() => engine.contact(peerId).presence.status === 'online')
 const where = engine.contact(peerId).presence
 console.error(`connected · path=${where.path} address=${where.address}`)
 
+// Every 2 s: the link as the transport sees it, so a slow run shows whether it is waiting on
+// the network (high rtt, retransmits, small cwnd) or on requests (few in flight).
+const statsTimer = setInterval(() => {
+  const s = engine.linkStats(peerId)
+  if (s) console.error(`[link] rtt=${s.rttMs}ms cwnd=${(s.cwndBytes / 1024).toFixed(0)}KB inflight=${(s.inflightBytes / 1024).toFixed(0)}KB retransmits=${s.retransmits} requests=${s.requestsInFlight}`)
+}, 2000)
+statsTimer.unref()
+
 const iSend = listening ? !reverse : reverse
 const rate = (ms: number) => +(mb / (ms / 1000)).toFixed(1)
 if (iSend) {

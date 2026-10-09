@@ -27,6 +27,10 @@ const SIGNALS_PROTOCOL = 'wehatemail/v1/signals'
 const PAIRING_GRACE = 30000
 const TRANSFER_TICK = 250
 const SPEED_WINDOW = 3000
+/** A connection that should be moving file data but hasn't for this long is dropped and redialled. */
+const STALL_MS = 6000
+const STALL_AFTER_NETWORK_CHANGE_MS = 3000
+const STALL_CHECK = 1000
 // Files are stored in the blob log one block per chunk read. 64 KB blocks capped the
 // sender copy at ~32 MB/s (per-block hashing and signing); 256 KB doubles it (npm run bench).
 const BLOB_CHUNK = 256 * 1024
@@ -229,6 +233,9 @@ interface Conversation {
   traffic: { at: number, bytes: number }[]
   tick: NodeJS.Timeout | null
   tickDirty: boolean
+  /** When bytes last moved for this contact, and when the connection last began wanting them. */
+  lastBytes: number
+  wantingSince: number
   sentBlobs: number
   /** Runs file sends one after another: the block numbers of a send are worked out up front. */
   sends: Promise<void>
@@ -271,6 +278,8 @@ export class Engine extends EventEmitter {
   private swarm: any = null
   private pairing: any = null
   private opening: Promise<void> | null = null
+  private networkChangedAt = 0
+  private stallTimer: ReturnType<typeof setInterval> | null = null
   private closed = false
 
   constructor (opts: EngineOptions) {
@@ -314,6 +323,11 @@ export class Engine extends EventEmitter {
       firewall: (remotePublicKey: Buffer) => !this.mayConnect(remotePublicKey)
     })
     this.swarm.on('connection', (conn: any) => this.onconnection(conn))
+    // Wi-Fi to hotspot and back: Hyperswarm probes the old connections and refreshes
+    // the DHT announces. We also tighten the stall watchdog so a dead path is dropped fast.
+    this.swarm.dht.on('network-change', () => { this.networkChangedAt = Date.now() })
+    this.stallTimer = setInterval(() => this.checkStalls(), STALL_CHECK)
+    this.stallTimer.unref?.()
     this.pairing = new BlindPairing(this.swarm, { poll: this.opts.pairingPoll })
 
     for (const record of this.state.contacts) await this.openConversation(record)
@@ -325,6 +339,7 @@ export class Engine extends EventEmitter {
   async close () {
     if (this.closed) return
     this.closed = true
+    if (this.stallTimer) clearInterval(this.stallTimer)
     await this.opening?.catch(() => {})
     for (const conv of this.conversations.values()) {
       if (conv.typingTimer) clearTimeout(conv.typingTimer)
@@ -577,6 +592,8 @@ export class Engine extends EventEmitter {
       traffic: [],
       tick: null,
       tickDirty: false,
+      lastBytes: 0,
+      wantingSince: 0,
       sentBlobs: -1,
       sends: Promise.resolve(),
       processed: 0,
@@ -995,8 +1012,57 @@ export class Engine extends EventEmitter {
     })
   }
 
+  /**
+   * Transport numbers for the current connection, for diagnosing slow links
+   * (`npm run bench` prints them): round-trip time, UDX congestion window and bytes in
+   * flight, retransmits, and how many block requests Hypercore has outstanding.
+   */
+  linkStats (contactId: string) {
+    const conv = this.conv(contactId)
+    const raw = conv.conn?.rawStream
+    if (!raw) return null
+    const peers: any[] = conv.theirBlobs?.core.peers ?? []
+    return {
+      rttMs: raw.rtt as number,
+      cwndBytes: raw.cwnd as number,
+      inflightBytes: raw.inflight as number,
+      retransmits: raw.retransmits as number,
+      mtu: raw.mtu as number,
+      requestsInFlight: peers.reduce((n, peer) => n + (peer.inflight ?? 0), 0)
+    }
+  }
+
+  /** Does this contact owe or await file bytes right now? */
+  private wantsBytes (conv: Conversation): boolean {
+    if (conv.conn === null) return false
+    if (conv.record.blobsDelivered < conv.mineBlobs.core.length) return true
+    return conv.items.some(item => !item.mine && item.held < item.ref.blockLength &&
+      conv.record.transfers[item.messageId + '#' + item.index] !== 'done' && !!item.range)
+  }
+
+  /**
+   * Requests stay pinned to the connection they were sent on. If that connection went
+   * quiet (a half-open socket after a network change) drop it: Hyperswarm redials and
+   * Hypercore re-requests the missing blocks on the new one.
+   */
+  private checkStalls () {
+    const now = Date.now()
+    for (const conv of this.conversations.values()) {
+      if (!conv.conn || !this.wantsBytes(conv)) { conv.wantingSince = 0; continue }
+      if (!conv.wantingSince) conv.wantingSince = now
+      const quietFor = now - Math.max(conv.lastBytes, conv.wantingSince)
+      const limit = now - this.networkChangedAt < 30000 ? STALL_AFTER_NETWORK_CHANGE_MS : STALL_MS
+      if (quietFor < limit) continue
+      conv.wantingSince = now
+      conv.lastBytes = now
+      this.emit('warning', conv.record.publicKey, 'Transfer stalled; reconnecting')
+      conv.conn.destroy()
+    }
+  }
+
   private noteBytes (conv: Conversation, bytes: number) {
     conv.traffic.push({ at: Date.now(), bytes })
+    conv.lastBytes = Date.now()
     this.scheduleTransfer(conv)
   }
 
@@ -1171,6 +1237,10 @@ export class Engine extends EventEmitter {
       blobs: channel.addMessage({ encoding: c.uint, onmessage: (n: number) => this.onblobs(conv, n) })
     }
     if (conv.channel) conv.channel.close()
+    // The newest connection wins; a lingering old one (half-open after a network change)
+    // would keep Hypercore requests pinned to a dead path.
+    const old = conv.conn
+    if (old && old !== conn) { old.on('error', () => {}); old.destroy() }
     conv.conn = conn
     conv.channel = channel
     conv.messages = messages
@@ -1220,6 +1290,10 @@ export class Engine extends EventEmitter {
     this.onreceipt(conv, m.receivedLength, 'delivered')
     this.onreceipt(conv, m.readLength, 'read')
     this.onblobs(conv, m.blobsLength)
+    // A fresh connection may have missed appends made while it was coming up
+    // (the sender copies a file while we already download it): ask for the new length.
+    conv.theirs?.update({ wait: false }).catch(() => {})
+    conv.theirBlobs?.core.update({ wait: false }).catch(() => {})
   }
 
   /** They now hold the first N blocks of my blob log. */

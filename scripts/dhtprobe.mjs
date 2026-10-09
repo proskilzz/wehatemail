@@ -23,7 +23,7 @@ s.on('open', () => {
   s.on('data', d => { if (!t0) t0 = Date.now(); bytes += d.length; last = Date.now() })
   const tick = setInterval(() => {
     const secs = (Date.now() - t0) / 1000
-    console.log(`${(bytes / 1048576).toFixed(0)} MB  ${(bytes / 1048576 / secs).toFixed(1)} MB/s avg  mtu ${s.rawStream.mtu}`)
+    console.log(`${(bytes / 1048576).toFixed(0)} MB  ${(bytes / 1048576 / secs).toFixed(1)} MB/s avg  mtu ${s.rawStream.mtu} rtt ${s.rawStream.rtt}ms cwnd ${(s.rawStream.cwnd / 1024).toFixed(0)}KB retransmits ${s.rawStream.retransmits}`)
     if (Date.now() - last > 15000) { console.log('STALLED: no data for 15 s'); process.exit(2) }
   }, 5000)
   s.on('end', () => { clearInterval(tick); const secs = (Date.now() - t0) / 1000; console.log(`DONE ${(bytes / 1048576).toFixed(0)} MB in ${secs.toFixed(1)} s = ${(bytes / 1048576 / secs).toFixed(1)} MB/s`); process.exit(0) })
