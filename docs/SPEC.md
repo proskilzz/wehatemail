@@ -278,6 +278,22 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
    and the tray says so in one line. Add the cleaning to "How this works".
    Tests: a JPEG and a MOV with GPS come out with no GPS and identical pixels/frames.
 
+   **Also in M8, first: follow-ups from M7 testing (2026-10-08).** Pro on iPhone hotspot,
+   Air on home Wi-Fi, M7 build, 300 MB Pro→Air.
+   - **~10 s "stalled" at the start of the transfer, then normal speed.** Suspect: the
+     stall watchdog (6 s with no file data) fires while the sender is still hashing
+     and planning the file before any block exists, and drops a healthy connection.
+     The watchdog should only count time when the peer has blocks we're missing
+     (a known remote length greater than what we hold) and the connection is idle. Add
+     a test: a large file whose hashing takes longer than the watchdog must not
+     trigger a reconnect.
+   - **Average speed lower than the card's speed:** 5–6 MB/s shown, but 300 MB took
+     ~2 min (~2.5 MB/s). Log per-transfer start/finish timestamps, total stall time and
+     reconnect count, and show the average next to the live speed when a transfer
+     finishes (e.g. `done · 300 MB in 1:58 · avg 2.5 MB/s`) so tests are easy to read.
+   - For reference, measured on the same hotspot to an internet server: raw upload
+     4.0–6.3 MB/s, engine (`bench`) 9.9 MB/s. The engine isn't the limit there.
+
 ## 9. Out of scope for v1
 
 Group chats, multiple devices, cloud backup, voice/video calls, Tor mode, mobile
