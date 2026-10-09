@@ -64,3 +64,26 @@ How to read it:
 | Air → Pro, same Wi-Fi | | | | | |
 | Ethernet (if possible) | | | | | |
 
+
+## 4. Network changes and cellular upload (M7)
+
+**Network change mid-transfer.** A = Pro, B = Air, both on home Wi-Fi, WireGuard off.
+Send B a 1 GB file, and while it is moving switch A to the iPhone hotspot (and back).
+Expect: the card keeps going within a few seconds on the new connection (it may log
+"Transfer stalled; reconnecting" once). Record how many seconds it took.
+
+**Cellular upload.** A on the hotspot, B on home Wi-Fi. Run all three on the same path and compare:
+1. `node scripts/dhtprobe.mjs <key>` against `npm run linktest -- --listen` on B (raw connection;
+   prints MB/s, `rtt`, `cwnd`, `retransmits` every 5 s). Add `reverse` to test A→B.
+2. `npm run bench -- --listen 300` on A, `npm run bench -- --connect <code>` on B (A sends).
+   Both print a `[link]` line every 2 s: `rtt`, UDX `cwnd`, bytes `inflight`, `retransmits`, block
+   `requests` in flight. Try `--inflight 64,512` on B.
+3. The app.
+
+Target: the engine reaches **≥ 70%** of step 1. If `requests` stays low while `cwnd` is large, the
+request window is the limit (raise `--inflight`); if `cwnd` is small with many `retransmits`, it is the
+link/congestion control, not our code.
+
+| Run | rtt | raw (dhtprobe) | bench | `--inflight 64,512` | App |
+|---|---|---|---|---|---|
+| hotspot → home | | | | | |
