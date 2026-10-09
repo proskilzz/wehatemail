@@ -230,7 +230,41 @@ Matrix is the best-known open, decentralized chat protocol. What we take from it
      (`dd … | nc`) = **31.8 MB/s**. The app got ~8 MB/s (about 25%). **Target ≥ 25 MB/s**
      Pro→Air on this Wi-Fi.
 
-7. **M7: Privacy polish.** **Strip metadata from photos and videos by
+7. **M7: Network changes and cellular.** Findings from 2026-10-08 (Pro on home
+   Wi-Fi or iPhone hotspot, Air on home Wi-Fi, WireGuard off; raw numbers from
+   `scripts/dhtprobe.mjs` against an internet server):
+
+   | Path | Raw connection | App |
+   |---|---|---|
+   | home Wi-Fi ↔ server | 28.6 down / 29.7 up MB/s | n/a |
+   | hotspot ↔ server | 10.8 down / 5.1 up MB/s | n/a |
+   | Pro (hotspot) ← Air (home), fresh connection | n/a | 9–12 MB/s ✓ |
+   | Pro (hotspot) → Air (home), fresh connection | n/a | **0.8–2 MB/s** (293 MB in 5 min) |
+
+   - **Transfers stall after a network change (reproduced twice).** Pro sends to
+     Air, both on Wi-Fi. Mid-transfer the Pro switches to the hotspot: chat still
+     works over the new connection, but the transfer stays stuck until the Pro is
+     back on Wi-Fi. Likely cause: block requests stay pinned to the dead
+     connection/peer and aren't re-issued on the new one. Fix it so the transfer
+     resumes on any new connection within a few seconds. Also react to OS network
+     changes (HyperDHT/UDX network-change) by reconnecting at once rather than
+     waiting for timeouts. **Test:** on testnet, cut the connection mid-transfer,
+     reconnect over a new connection, and require completion with a correct
+     checksum. Cover both "same peer, new socket" and "old connection still
+     half-open".
+   - **Cellular upload is slow:** the app gets ~1 MB/s where the raw connection
+     gets ~5 MB/s. The link had high latency under load (networkQuality: 341 ms,
+     "Low" responsiveness). Measure first: app vs `dhtprobe` on the same
+     hotspot→home path, with RTT and requests in flight logged. Then tune for
+     high-RTT links (inflight window, block size, request pipelining). **Target:
+     ≥ 70% of the raw connection on the same path.** If you add a simulated
+     high-latency/lossy link to tests (e.g. delay in a UDX wrapper), keep it fast.
+   - **`npm run linktest -- --connect` never connects on real machines**, while a
+     direct HyperDHT lookup + connect (`scripts/dhtprobe.mjs`) works in seconds.
+     Find out why (Hyperswarm client join/refresh?) and fix linktest. This may
+     matter for the app's own reconnect speed too.
+
+8. **M8: Privacy polish.** **Strip metadata from photos and videos by
    default.** Anything sent with Photos, Video or Album is cleaned before it's
    added to the blob log:
    - **Photos:** drop EXIF/XMP/IPTC (GPS, date, camera, serial, software) losslessly.
