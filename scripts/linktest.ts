@@ -38,6 +38,8 @@ function receive (conn: any, mb: number) {
       bytes += d.length
       if (bytes >= mb * 1024 * 1024) resolve({ bytes, ms: Date.now() - t0 })
     })
+    // The sender ends the stream when done, so a smaller send than expected still reports.
+    conn.on('end', () => resolve({ bytes, ms: Date.now() - t0 }))
   })
 }
 
@@ -73,7 +75,10 @@ if (flag('--listen') || flag('--connect')) {
     await swarm.destroy()
     process.exit(0)
   })
-  swarm.join(topic, { server: listening, client: !listening })
+  const discovery = swarm.join(topic, { server: listening, client: !listening })
+  // Print the key only once the announce is on the DHT; a lookup before that misses
+  // and hyperswarm only retries minutes later.
+  if (listening) await discovery.flushed()
   if (listening) console.error(`waiting… on the other machine run:\n  npm run linktest -- --connect ${topic.toString('hex')}`)
 } else {
   const mb = Number(args.find(a => /^\d+$/.test(a)) ?? 500)
