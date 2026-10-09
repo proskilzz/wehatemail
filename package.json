@@ -15,6 +15,7 @@
     "cli": "tsx src/cli/index.ts",
     "test": "tsc --noEmit && node --import tsx test/all.ts",
     "bench": "tsx scripts/bench-transfer.ts",
+    "linktest": "tsx scripts/linktest.ts",
     "typecheck": "tsc --noEmit",
     "dist": "electron-vite build && electron-builder --publish never"
   },

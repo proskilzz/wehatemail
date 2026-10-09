@@ -28,7 +28,8 @@ export function transferText (t: Transfer | undefined, name: string, selfOffline
   if (selfOffline) return { text: `Paused: you're offline · ${pct}`, tone: 'warn' }
   if (t.state === 'paused') return { text: `Paused: ${name} is offline · ${pct}`, tone: 'warn' }
   const speed = t.speed > 0 ? ' · ' + fmtBytes(t.speed) + '/s' : ''
-  return { text: (t.direction === 'out' ? 'Sending ' : 'Receiving ') + pct + speed, tone: '' }
+  const via = t.path === 'lan' ? ' · same network' : t.path === 'internet' ? ' · internet' : ''
+  return { text: (t.direction === 'out' ? 'Sending ' : 'Receiving ') + pct + speed + via, tone: '' }
 }
 
 // ---- Previews (made here because the engine can't decode media) -------------

@@ -1,5 +1,5 @@
-export { Engine, compareMessages } from './engine.ts'
-export type { EngineOptions, Contact, Message, MessageStatus, Invite, Presence, Attachment, Preview, OutgoingFile, Transfer, TransferState } from './engine.ts'
+export { Engine, compareMessages, connectionPath, isLocalAddress } from './engine.ts'
+export type { EngineOptions, Contact, Message, MessageStatus, Invite, Presence, ConnectionPath, Attachment, Preview, OutgoingFile, Transfer, TransferState } from './engine.ts'
 export { MemorySecretStore, FileSecretStore, SafeStorageSecretStore, keychainMessage } from './secrets.ts'
 export type { SecretStore, SafeStorageLike } from './secrets.ts'
 export { dmTopic, safetyCode } from './keys.ts'

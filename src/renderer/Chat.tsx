@@ -30,12 +30,13 @@ interface Pending { id: number, label: string, failed?: string, run: () => Promi
 
 let nextId = 1
 
-export function Chat ({ contact, messages, transfers, typing, myName, info, onInfo, onSafety, onInvite, onPaste }: {
+export function Chat ({ contact, messages, transfers, typing, myName, notes, info, onInfo, onSafety, onInvite, onPaste }: {
   contact: Contact | null
   messages: Message[]
   transfers: Transfer[]
   typing: boolean
   myName: string
+  notes: string[]
   info: boolean
   onInfo: () => void
   onSafety: () => void
@@ -223,6 +224,7 @@ export function Chat ({ contact, messages, transfers, typing, myName, info, onIn
         <div className='sys'><span className='badge'>SYS</span><span>you and {contact.name} are connected. nothing in between.</span>
           {contact.verified && <span className='ok'>safety code matched ✓</span>}
         </div>
+        {notes.map((n, i) => <div className='sys' key={i}><span className='badge'>SYS</span><span>{n}</span></div>)}
         {!online && <div className='sys'><span className='badge'>SYS</span>{contact.name} is offline. messages and files are delivered when you are both back.</div>}
         {messages.map(m => (
           <div className={'msg' + (m.deleted ? ' deleted' : '')} key={m.id}>

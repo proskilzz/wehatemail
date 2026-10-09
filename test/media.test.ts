@@ -163,3 +163,59 @@ test('attachments are only served inline when the declared type is allowed and t
   t.alike(await bob.attachmentServing(alice.id, htmlMsg.id, 0), download)
   t.alike(await alice.attachmentServing(bob.id, album.id, 0), { mime: 'image/png', inline: true }, 'sender side too')
 })
+
+test('receiver progress grows steadily and counts blocks held, not the contiguous prefix', async t => {
+  const { alice, bob } = await pairUp(t)
+  const file = await tmpFile(t, 'big.bin', crypto.randomBytes(48 * 1024 * 1024))
+  const arrived = once(bob, 'message', (_id, m) => m.kind === 'file')
+  const [sent] = await alice.sendFiles(bob.id, [{ path: file, mime: 'application/octet-stream' }])
+  await arrived
+
+  const samples: number[] = []
+  const started = Date.now()
+  while (Date.now() - started < 60000) {
+    const x = bob.transfers(alice.id).find(tr => tr.messageId === sent.id)!
+    samples.push(x.done)
+    if (x.state === 'done') break
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
+  t.is(samples.at(-1), 48 * 1024 * 1024, 'finishes at 100%')
+  t.ok(samples.some(n => n > 0 && n < 48 * 1024 * 1024), 'shows partial progress on the way')
+  t.ok(samples.every((n, i) => i === 0 || n >= samples[i - 1]), 'never goes backwards')
+})
+
+test('connection path is reported, same-network addresses count as lan', async t => {
+  const { isLocalAddress } = await import('../src/core/index.ts')
+  t.ok(isLocalAddress('192.168.1.20'))
+  t.ok(isLocalAddress('10.0.0.5'))
+  t.ok(isLocalAddress('172.20.1.1'))
+  t.ok(isLocalAddress('127.0.0.1'))
+  t.ok(isLocalAddress('fe80::1'))
+  t.absent(isLocalAddress('8.8.8.8'))
+  t.absent(isLocalAddress('172.32.0.1'))
+
+  const { alice, bob } = await pairUp(t)
+  const p = alice.contact(bob.id).presence
+  t.is(p.via, 'direct')
+  t.is(p.path, 'lan', 'testnet runs on loopback')
+  t.ok(p.address)
+})
+
+test('an empty file and several files in a row land where the plan said', async t => {
+  const { alice, bob } = await pairUp(t)
+  const empty = await tmpFile(t, 'empty.txt', Buffer.alloc(0))
+  const odd = crypto.randomBytes(256 * 1024 + 5)
+  const exact = crypto.randomBytes(512 * 1024)
+  const files = [
+    { path: await tmpFile(t, 'a.bin', odd), mime: 'application/octet-stream' },
+    { path: empty, mime: 'text/plain' },
+    { path: await tmpFile(t, 'b.bin', exact), mime: 'application/octet-stream' }
+  ]
+  const sent = await alice.sendFiles(bob.id, files)
+  await waitFor(() => bob.transfers(alice.id).length === 3 && bob.transfers(alice.id).every(x => x.state === 'done'))
+  const out = await Promise.all(sent.map(async m => readAll(bob.readAttachment(alice.id, m.id, 0))))
+  t.alike(out[0], odd)
+  t.is(out[1].length, 0)
+  t.alike(out[2], exact)
+  await waitFor(() => alice.transfers(bob.id).every(x => x.state === 'done'))
+})

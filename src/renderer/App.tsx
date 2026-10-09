@@ -25,6 +25,9 @@ export function App () {
   const [safetyFocus, setSafetyFocus] = useState(0)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [warning, setWarning] = useState('')
+  // Session-only SYS lines per chat ("air joined using your invite"), and new contacts nobody has opened yet.
+  const [notes, setNotes] = useState<Record<string, string[]>>({})
+  const [fresh, setFresh] = useState<Set<string>>(new Set())
   // An invite link the OS opened us with; shown in the connect box once setup is done.
   const [link, setLink] = useState<string | null>(null)
 
@@ -84,6 +87,15 @@ export function App () {
       }
       setContacts(await window.whm.contacts())
       if (e.type === 'contact') setInvites(await window.whm.listInvites())
+      if (e.type === 'contact' && e.joined) {
+        // Someone used my invite: show it was this invite that worked, then land on them.
+        const who = e.contact.id
+        setDialog(d => d === 'invite' ? null : d)
+        setNotes(n => ({ ...n, [who]: [...(n[who] ?? []), `${e.contact.name} joined using your invite`] }))
+        if (live.current.selected) setFresh(f => new Set(f).add(who))
+        else setSelected(who)
+        if (live.current.settings.sounds) door(true)
+      }
       if (e.type !== 'presence' && 'id' in e && e.id === live.current.selected) loadMessages(e.id)
     })
   }, [apply, loadMessages])
@@ -115,13 +127,15 @@ export function App () {
     return <FirstRun onDone={async n => { apply(await window.whm.completeSetup(n)) }} />
   }
 
-  const contact = contacts.find(c => c.id === selected) ?? null
+  // A new contact counts as one unread until its chat is opened.
+  const shown = contacts.map(c => fresh.has(c.id) && c.id !== selected ? { ...c, unread: c.unread + 1 } : c)
+  const contact = shown.find(c => c.id === selected) ?? null
   const updateSettings = async (patch: Partial<Settings>) => setSettings(await window.whm.updateSettings(patch))
 
   return (
     <>
       <div className='app'>
-        <BuddiesButton unread={contacts.reduce((n, c) => c.id === selected ? n : n + c.unread, 0)} onClick={() => setDrawer(true)} />
+        <BuddiesButton unread={shown.reduce((n, c) => c.id === selected ? n : n + c.unread, 0)} onClick={() => setDrawer(true)} />
         {contact && (
           <Avatar
             side='them'
@@ -137,6 +151,7 @@ export function App () {
           transfers={transfers}
           typing={!!(contact && typing[contact.id] && contact.presence.status === 'online')}
           myName={name}
+          notes={contact ? notes[contact.id] ?? [] : []}
           info={info}
           onInfo={() => setInfo(v => !v)}
           onSafety={() => { setInfo(true); setSafetyFocus(n => n + 1) }}
@@ -147,9 +162,9 @@ export function App () {
         <Drawer
           open={drawer}
           settings={settings}
-          contacts={contacts}
+          contacts={shown}
           selected={selected}
-          onSelect={setSelected}
+          onSelect={id => { setSelected(id); setFresh(f => { if (!f.has(id)) return f; const g = new Set(f); g.delete(id); return g }) }}
           onClose={() => setDrawer(false)}
           onInvite={() => setDialog('invite')}
           onPaste={() => setDialog('paste')}

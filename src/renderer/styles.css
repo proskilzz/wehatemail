@@ -29,7 +29,8 @@ button { font-family:inherit; }
 .avatar .nm { font:600 12px var(--mono); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .avatar.them .nm { color:var(--them); } .avatar.me .nm { color:var(--me); }
 .avatar .st { font:11px/1.3 var(--mono); color:var(--muted); text-align:center; width:100%; background:none; border:0; padding:0; outline:none; overflow-wrap:anywhere; }
-.avatar input.st:hover, .avatar input.st:focus { color:var(--text); text-decoration:underline dashed var(--line); }
+.avatar textarea.st { resize:none; overflow:hidden; font:11px/1.3 var(--mono); }
+.avatar textarea.st:hover, .avatar textarea.st:focus { color:var(--text); text-decoration:underline dashed var(--line); }
 .themcol { grid-column:1; grid-row:2; align-self:start; }
 .mecol { grid-column:1; grid-row:3 / span 2; align-self:start; }
 
